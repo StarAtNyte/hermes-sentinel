@@ -23,7 +23,7 @@ Rule modes: `trigger`, `condition` (true for N seconds), `absence` (expected thi
 | `ctx.inject_message` | Alert delivery into the originating chat (photo via `MEDIA:`); needs `allow_gateway_injection` outside the classic CLI |
 | `ctx.on_unload` | Stops watcher threads and closes the store |
 | `plugin_db` / plugin data dir | SQLite store and snapshots under `plugin-data/hermes-sentinel/` |
-| Dashboard / Desktop pane | `dashboard/manifest.json` + `dashboard/plugin_api.py` (FastAPI router at `/api/plugins/hermes-sentinel/`) and `desktop/plugin.js` (Desktop Plugin SDK + React only): live source tiles, rules with pause/resume/delete, event timeline with correct / false-alarm buttons. It polls over `ctx.rest`; it reuses the same runtime, store and engine objects as the tools |
+| Dashboard / Desktop pane | `dashboard/manifest.json` + `dashboard/plugin_api.py` (FastAPI router at `/api/plugins/hermes-sentinel/`) and `desktop/plugin.js` (Desktop Plugin SDK + React only): live source tiles (latest frame, about 1 fps), rules with pause/resume/delete, a Watch form (free-text source, optional recipe), event timeline with snapshots and correct / false-alarm buttons, a status-bar chip and a budget/delivery banner. It polls over `ctx.rest` (no websocket) and fetches images as `?encoding=data_url` JSON; it reuses the same runtime, store and engine objects as the tools. The pane is enabled by default (no `defaultEnabled: false`); it shows an empty state and 503 writes if the dashboard process that serves `plugin_api.py` is not the process that runs the agent, so it must be hosted by that process (see README) |
 
 No hooks, no middleware, no `requires_env`. `capabilities.provides_tools` in the entry lists the eight tools above and matches `plugin.yaml` and `register(ctx)` (asserted by `tests/test_register.py`).
 
@@ -42,7 +42,7 @@ No hooks, no middleware, no `requires_env`. `capabilities.provides_tools` in the
 
 ### Test evidence
 
-- `scripts/check.sh` on the pinned commit: ruff clean, 1066 plugin tests passed, tool tests passed, `rule_lint` clean (rules 3, 7, 8, 9, 11, 17 statically).
+- `scripts/check.sh` on the pinned commit: ruff clean, 1137 plugin tests passed, 156 tool tests passed (including the Node check of `desktop/plugin.js`), `rule_lint` clean (rules 3, 8, 9, 11, 17 statically). `rule_lint` does not cover rule 7: that is the Hermes install security scan, reported below.
 - Tests use a fake plugin context and a scripted fake LLM, never import Hermes, and use synthetic scenes generated at test time (nothing committed as media). They cover the gate, the k-of-n state machine with an injected clock, budgets, the engine, alerts and injection hardening, tools, the slash command and an end-to-end flow. `test_register.py` asserts declared tools equal registered tools.
 - `hermes plugins validate hermes-sentinel --install-deps`: `<FILL: paste result and any warnings, with explanation>`.
 - `hermes plugins doctor hermes-sentinel --ci`: `<FILL: paste result>`.
@@ -68,8 +68,8 @@ Single stills only (no motion, no audio); accuracy depends on the vision model; 
 - [ ] 4. First listing; later SHA bumps go in new PRs with `version` and screenshot URLs re-pinned.
 - [ ] 5. Submitted by the repository owner.
 - [ ] 6. `capabilities` lists the 8 tools, no hooks, middleware or env vars; matches `register(ctx)`.
-- [ ] 7. Security scan: `<FILL: result>`; every `caution` read and answered above.
-- [ ] 8. `desktop/plugin.js` imports only `@hermes/plugin-sdk` and `react`; no prototype patching, `eval`, dynamic import, script injection, `data-*` queries or `document.body` observers; no `window.hermesDesktop` calls.
+- [ ] 7. Hermes install security scan (`hermes plugins validate` / install): `<FILL: result>`; every `caution` read and answered above.
+- [ ] 8. `desktop/plugin.js` imports only `@hermes/plugin-sdk`, `react` and `react/jsx-runtime` (no JSX source, the runtime import is the one the docs allow); no prototype patching, `eval`, dynamic import, script injection, `data-*` queries or `document.body` observers; no `window.hermesDesktop` calls.
 - [ ] 9. Only `ctx.*` public APIs; no core attribute rebinding; `hermes plugins validate` "no core override" check: `<FILL: result and any undocumented-import warnings>`.
 - [ ] 10. Dependencies have floors and upper bounds.
 - [ ] 11. Secrets only via `agent.secret_scope.get_secret`; no credential files read.
@@ -77,6 +77,11 @@ Single stills only (no motion, no audio); accuracy depends on the vision model; 
 - [ ] 13. Disclosures above and in the README.
 - [ ] 14. `requires_hermes: ">=0.22.5"` (SemVer, not newer than current release v0.22.5) in `plugin.yaml` and the entry; `version` `0.1.0` matches the code.
 - [ ] 15. Not a skin or fork of a bundled plugin.
-- [ ] 16. Checked the catalog for existing camera/vision-monitoring plugins: `<FILL: result>`.
+- [ ] 16. Checked the catalog for existing camera/vision plugins; none covers the same job:
+  - `hermes-desktop-camera`: a composer button that takes one photo and attaches it to the next message. Manual, one shot, no rules, watching, judging or alerts. Sentinel never adds attachments to the composer.
+  - `hermes-monitor`: Desktop status-bar health for Kanban workers and provider quota. Not about cameras or images.
+  - `covision`: read-only Covision meeting and task tools over MCP. Unrelated.
+  - `hermes-vision-inline`: middleware that attaches images inline to the session model instead of the auxiliary vision backend. Sentinel adds no middleware and does not change how Hermes handles images; it runs its own continuous watcher, change gate, k-of-n judging, event store and alerts on its own `sentinel_vision` auxiliary task.
+  - Re-run `ls plugin-catalog | grep -i -E "camera|vision|watch|monitor|sentinel"` on the day of the PR: `<FILL: result>`.
 - [ ] 17. Source only: no binaries, no `.pyc`/`.pyo`, no archives.
 - [ ] 18. Not a password-manager login backend.

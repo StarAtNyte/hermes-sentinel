@@ -1,6 +1,6 @@
 # Architecture
 
-This describes the code as it is. [DESIGN.md](../../DESIGN.md) is the original plan; where they differ (no Desktop pane or dashboard backend, six-recipe set, `sentinel_rules` task, route book, process lock), this document is right.
+This describes the code as it is. [DESIGN.md](../../DESIGN.md) is the original plan; where they differ (Desktop pane and dashboard backend now exist, six-recipe set, `sentinel_rules` task, route book, process lock), this document is right.
 
 ## Data flow
 
@@ -29,6 +29,8 @@ capture thread (one per source) --frame--> ChangeGate (one per rule, ROI aware)
 | `alerts.py` | `Alerter`: message formatting, untrusted-text handling, routes, rate limits, delivery-blocked state; `RouteBook`; origin capture and chat scoping helpers. |
 | `tools.py` | Eight tool schemas and handlers; `register_tools`. |
 | `commands.py` | `SentinelCommand` for `/sentinel`. |
+| `dashboard/plugin_api.py` | FastAPI router mounted by Hermes at `/api/plugins/hermes-sentinel/`. Finds the loaded `Sentinel` by scanning `sys.modules` for `hermes_plugins.hermes_sentinel[__home_*]`; masks source specs; serves frames and snapshots as raw JPEG or `?encoding=data_url` JSON. |
+| `desktop/plugin.js` | Desktop pane (SDK + React only): polling controller, source tiles, rules, Watch form, events, status chip. No websocket. |
 
 ## Threading model
 

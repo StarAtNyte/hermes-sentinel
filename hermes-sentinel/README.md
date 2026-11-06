@@ -20,7 +20,7 @@ You:    what happened at my desk today?
 Hermes: 3 events: 09:12 mug placed, 11:40 someone sat down, 14:03 mug taken [photos]
 ```
 
-It works from the classic CLI and from messaging platforms. There is no Desktop pane in this release.
+It works from the classic CLI, from messaging platforms and from Hermes Desktop, which adds a Sentinel pane (see [Desktop pane](#desktop-pane)).
 
 ## Features
 
@@ -123,6 +123,20 @@ auxiliary:
 ```
 
 **Telegram, Discord and other chats.** In a messaging chat Hermes does not hand tools the chat's routing key; slash commands get it. Send `/sentinel here` once in that chat so Sentinel learns where to deliver. `/sentinel here all` moves your existing rules in that chat to the current one. A rule created in a chat is delivered to that chat (by platform and chat id, never to the local CLI session of the process that happens to run it), and that chat only sees its own rules. If the chat route cannot be used, the alert is reported as undelivered rather than sent elsewhere.
+
+## Desktop pane
+
+Hermes Desktop shows a Sentinel page (sidebar entry) and a status-bar chip. It is enabled by default. The page has:
+
+- source tiles with the latest captured frame (refreshed about once a second while the page is open, paused when the window is hidden), online/offline state and the number of rules using each source;
+- the rules list with mode, state, vision calls per hour, last event and cooldown, and Pause / Resume / Delete (delete asks to confirm). Long status text such as `source offline: ...` wraps instead of overflowing;
+- a Watch form: a plain-English text, a free-text Source field (leave empty for the default source; examples `camera:0`, `screen`; suggestions never include masked keys) and an optional recipe. Credentialed sources are masked in listings and cannot be typed back; use a named `stream_urls` entry with `${SECRET}` placeholders;
+- the event timeline with snapshot thumbnails and correct / false-alarm buttons that feed the same tuning as the `sentinel_feedback` tool;
+- a budget meter and, if Hermes refuses injected alerts, the exact `allow_gateway_injection` YAML to copy.
+
+It polls the plugin's REST API at `/api/plugins/hermes-sentinel/` (no websocket) and fetches frames and snapshots as JSON data URLs (`?encoding=data_url`; without the parameter the endpoints return a raw JPEG). URL credentials are masked in every response, including token-only userinfo and secret-looking RTSP path segments.
+
+**Which process hosts the pane.** `dashboard/plugin_api.py` is a thin view over the Sentinel running in the process that loaded the plugin (it finds it by scanning `sys.modules` for `hermes_plugins.hermes_sentinel` or the profile-scoped `hermes_plugins.hermes_sentinel__home_*` names). Camera frames only exist in the process that owns the watcher (`engine.lock`). If Desktop is served by a separate dashboard process that never loaded the plugin, the pane shows "Sentinel is not loaded in this process" and writes return 503; start Desktop against the Hermes process that runs your agent. Everything else (CLI, chat, alerts) is unaffected.
 
 ## Quick start
 
@@ -297,7 +311,7 @@ This section covers the catalog's rule 13.
 - A rule from an older session in the same chat is matched to that chat only after you run `/sentinel` once in the new session.
 - Local `/sentinel here` without a session id will not guess which local rule belongs to which session; pass a rule id.
 - Vision model quality decides accuracy. Expect misses and false alarms; the feedback loop reduces them, it does not remove them.
-- Desktop UI pane: not included.
+- Desktop pane: needs a Hermes Desktop that hosts the plugin REST bridge and the agent in one process (see below); it is read-mostly, the agent tools remain the full interface.
 
 ## Development
 

@@ -2,6 +2,20 @@
 
 All notable changes to hermes-sentinel. Versions follow SemVer.
 
+## Unreleased
+
+### Added
+
+- Desktop pane (`desktop/plugin.js`, backend `dashboard/plugin_api.py`): source tiles, rules with pause/resume/delete, Watch form, event timeline with feedback buttons, status chip.
+- `encoding=data_url` on the frame and snapshot endpoints (JSON `{ok, data_url}`); raw JPEG without the parameter.
+
+### Fixed
+
+- The pane found no Sentinel when the plugin was loaded under a profile-scoped module name; it now scans `sys.modules` and states which process must host it.
+- Source masking covers `snapshot:`/`folder:` prefixes, token-only userinfo and secret RTSP path segments.
+- The Watch form no longer sends masked source keys; Source is a free-text field. Onboarding no longer claims sources are auto-detected.
+- Removed the unused `/events` websocket from the pane (polling only); long rule status text wraps; a transient image error no longer latches the pane into direct-image mode.
+
 ## 0.1.0 - initial release
 
 ### Added
@@ -22,4 +36,4 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ### Not included
 
-- Audio, video-site streams (for example YouTube), Desktop pane.
+- Audio, video-site streams (for example YouTube).
