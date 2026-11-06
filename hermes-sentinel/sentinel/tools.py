@@ -40,6 +40,7 @@ from .rules import (
     compile_rule,
 )
 from .runtime import Sentinel
+from .setup_check import SetupEnv, fail_titles, format_report, run_checks, summarize
 from .sources import SourceError, SourceSpec, SourceSpecError, list_sources
 from .store import EventRecord, StoreError
 
@@ -216,6 +217,14 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         ["rule_id", "kind"],
     ),
 }
+SCHEMAS["sentinel_setup_check"] = _schema(
+    "sentinel_setup_check",
+    "Check whether Sentinel is ready to watch and alert: Python packages, cameras and screens, "
+    "default source, storage, alert delivery permission, vision model, caps and rules. Returns "
+    "an ordered list of checks (ok / warn / fail, with the exact fix) and a ready flag. Use it "
+    "when the user is setting up, or when watching or alerts do not work.",
+    {},
+)
 TOOL_NAMES: tuple[str, ...] = tuple(SCHEMAS)
 EMOJI = {
     "sentinel_sources": "\U0001f4f7",
@@ -226,6 +235,7 @@ EMOJI = {
     "sentinel_events": "\U0001f5c2",
     "sentinel_feedback": "\U0001f44d",
     "sentinel_teach": "\U0001f393",
+    "sentinel_setup_check": "\U0001fa7a",
 }
 
 
@@ -453,7 +463,7 @@ class _HourlyCap:
 
 
 class SentinelTools:
-    """The eight tool handlers, bound to one :class:`Sentinel`."""
+    """The nine tool handlers, bound to one :class:`Sentinel`."""
 
     def __init__(
         self,
@@ -544,6 +554,23 @@ class SentinelTools:
             "'screen:1@x,y,w,h' for part of a screen.",
         )
 
+    def sentinel_setup_check(self, args: dict, **kwargs: Any) -> str:
+        checks = run_checks(SetupEnv.from_sentinel(self.s, kwargs))
+        return _ok(checks=[c.to_dict() for c in checks], report=format_report(checks),
+                   **summarize(checks))
+
+    def _setup_hint(self) -> str:
+        """Point at ``/sentinel setup`` while a fail-level check exists (cheap checks only)."""
+        try:
+            env = SetupEnv.from_sentinel(self.s, probe_sources=False)
+            failing = fail_titles(run_checks(env))
+        except Exception:  # noqa: BLE001 - a hint must never break a watch
+            return ""
+        if not failing:
+            return ""
+        return (f" Setup problem ({', '.join(failing)}): run /sentinel setup "
+                "(or the sentinel_setup_check tool) for the fix.")
+
     def sentinel_watch(self, args: dict, **kwargs: Any) -> str:
         cfg = self.s.config
         source = self._source_arg(args)
@@ -610,6 +637,7 @@ class SentinelTools:
             + GATEWAY_INJECTION_YAML
         )
         message += self._here_hint(origin, kwargs)
+        message += self._setup_hint()
         return _ok(rule=_rule_brief(saved), message=message)
 
     def _here_hint(self, origin: Mapping[str, Any], kwargs: Mapping[str, Any]) -> str:

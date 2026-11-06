@@ -1,4 +1,4 @@
-"""The eight agent tools: schemas, argument handling, friendly errors, and each behaviour."""
+"""The nine agent tools: schemas, argument handling, friendly errors, and each behaviour."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def watch(rig, **args):
 def test_schemas_are_well_formed_and_match_manifest():
     manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text())
     assert sorted(manifest["provides_tools"]) == sorted(tools.TOOL_NAMES)
-    assert len(tools.TOOL_NAMES) == 8
+    assert len(tools.TOOL_NAMES) == 9
     import jsonschema
 
     for name, schema in tools.SCHEMAS.items():

@@ -92,7 +92,17 @@ const STATUS = {
   budget: { hour_used: 5, hour_cap: 20, day_used: 10, day_cap: 100, paused: false },
   sources: 2, rules: 1, version: '0.1.0'
 }
+const SETUP = {
+  ok: true, ready: false, to_fix: 1, to_review: 1, probed: false,
+  summary: 'Ready: no - 1 thing to fix (1 to review)',
+  checks: [
+    { id: 'deps', title: 'Python packages', status: 'ok', detail: 'all importable', fix: '' },
+    { id: 'vision', title: 'Vision model', status: 'warn', detail: 'uses your default model; it must accept images', fix: 'set auxiliary.sentinel_vision' },
+    { id: 'sources', title: 'Cameras and screens', status: 'fail', detail: 'none found', fix: 'Connect a webcam' }
+  ]
+}
 const base = () => ({
+  'GET /setup': (o, p) => (p.includes('probe=1') ? { ...SETUP, probed: true } : SETUP),
   'GET /status': STATUS, 'GET /sources': SOURCES, 'GET /rules': [RULE], 'GET /events': EVENTS,
   'GET /frame/camera%3A0': { ok: true, data_url: 'data:image/jpeg;base64,AAAA' },
   'GET /events/e1/snapshot': { ok: true, data_url: 'data:image/jpeg;base64,BBBB' },
@@ -274,6 +284,49 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   const flat = text(expand(m.SentinelPage({ controller: c })))
   assert.match(flat, /Nothing is being watched yet/)
   assert.match(flat, /No events yet/)
+}
+
+// 8. setup card: fetched once without probing, worst first, hidden when everything is ok,
+//    Check devices probes; a failing /setup never breaks the page
+{
+  const ctx = makeCtx(base())
+  const c = m.createController(ctx)
+  c.retain('page'); await settle()
+  assert.equal(ctx.calls.filter(x => x.p === '/setup').length, 1)
+  c.tick(true); await settle()
+  assert.equal(ctx.calls.filter(x => x.p.startsWith('/setup')).length, 1) // not polled
+  assert.deepEqual(m.setupIssues(c.getState().setup).map(i => i.id), ['sources', 'vision'])
+  let tree = expand(m.SentinelPage({ controller: c }))
+  const card = find(tree, n => n.type === 'section' && n.props['aria-label'] === 'Setup')[0]
+  assert.ok(card)
+  const flat = text(card)
+  assert.match(flat, /Ready: no - 1 thing to fix/)
+  assert.match(flat, /Connect a webcam/)
+  assert.doesNotMatch(flat, /Python packages/) // ok checks are not listed
+  assert.ok(flat.indexOf('Cameras and screens') < flat.indexOf('Vision model'))
+  const btn = find(card, n => n.type === 'Button')[0]
+  assert.equal(btn.props['aria-label'], 'Check cameras and screens now')
+  assert.equal(await c.checkSetup(true), true)
+  assert.ok(ctx.calls.some(x => x.p === '/setup?probe=1'))
+  assert.equal(c.getState().setup.probed, true)
+}
+{
+  const r = base()
+  r['GET /setup'] = { ...SETUP, checks: SETUP.checks.map(k => ({ ...k, status: 'ok' })) }
+  const c = m.createController(makeCtx(r))
+  c.retain('page'); await settle()
+  const tree = expand(m.SentinelPage({ controller: c }))
+  assert.equal(find(tree, n => n.type === 'section' && n.props['aria-label'] === 'Setup').length, 0)
+}
+{
+  const r = base()
+  delete r['GET /setup'] // 404: no card, page still renders
+  const c = m.createController(makeCtx(r))
+  c.retain('page'); await settle()
+  assert.equal(c.getState().errors.setup, 'not found')
+  const tree = expand(m.SentinelPage({ controller: c }))
+  assert.equal(find(tree, n => n.type === 'section' && n.props['aria-label'] === 'Setup').length, 0)
+  assert.match(text(tree), /Sources/)
 }
 
 console.log('plugin.js checks passed')

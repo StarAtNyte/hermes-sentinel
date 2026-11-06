@@ -1,4 +1,4 @@
-"""``/sentinel`` slash command: ``status | list | pause <id> | resume <id> | test <id> | budget``.
+"""``/sentinel`` slash command: ``setup | status | list | pause | resume | test | budget | here``.
 
 Handlers return text (they run in the gateway, so ``print`` would go nowhere) and never raise.
 ``test`` makes one vision call (counted against the budget); everything else is local.
@@ -11,14 +11,16 @@ from typing import Any
 
 from .alerts import GATEWAY_INJECTION_YAML, capture_origin, is_chat_origin, same_chat
 from .runtime import Sentinel
+from .setup_check import SetupEnv, format_report, run_checks
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["ARGS_HINT", "USAGE", "SentinelCommand"]
 
-ARGS_HINT = "[status|list|pause <id>|resume <id>|test <id>|budget|here [<id>|all]]"
+ARGS_HINT = "[setup|status|list|pause <id>|resume <id>|test <id>|budget|here [<id>|all]]"
 USAGE = (
-    "Usage: /sentinel status | list | pause <rule_id> | resume <rule_id> | test <rule_id> | "
+    "Usage: /sentinel setup | status | list | pause <rule_id> | resume <rule_id> | "
+    "test <rule_id> | "
     "budget | here [<rule_id>|all]"
 )
 
@@ -43,6 +45,8 @@ class SentinelCommand:
             caller = self._caller(kwargs)
             if sub == "here":
                 return self.here(arg, route, kwargs, caller)
+            if sub in ("setup", "check", "doctor"):
+                return self.setup(kwargs)
             if sub in ("status", "st"):
                 return self.status(caller)
             if sub in ("list", "ls", "rules"):
@@ -113,6 +117,11 @@ class SentinelCommand:
             return ("Alerts for rules created in this session from now on will come here. "
                     "Use /sentinel here all to move existing rules too.")
         return f"Alerts for {', '.join(bound)} will now come to this chat."
+
+    def setup(self, kwargs: dict[str, Any]) -> str:
+        """Run the setup check (probes devices briefly; no network, no vision calls)."""
+        env = SetupEnv.from_sentinel(self.s, kwargs)
+        return format_report(run_checks(env))
 
     def status(self, caller: dict[str, Any] | None = None) -> str:
         head = f"hermes-sentinel {self.version}".strip()

@@ -132,6 +132,7 @@ Hermes Desktop shows a Sentinel page (sidebar entry) and a status-bar chip. It i
 - the rules list with mode, state, vision calls per hour, last event and cooldown, and Pause / Resume / Delete (delete asks to confirm). Long status text such as `source offline: ...` wraps instead of overflowing;
 - a Watch form: a plain-English text, a free-text Source field (leave empty for the default source; examples `camera:0`, `screen`; suggestions never include masked keys) and an optional recipe. Credentialed sources are masked in listings and cannot be typed back; use a named `stream_urls` entry with `${SECRET}` placeholders;
 - the event timeline with snapshot thumbnails and correct / false-alarm buttons that feed the same tuning as the `sentinel_feedback` tool;
+- a compact Setup checklist (fetched once from `GET /setup`, without probing cameras; a button runs the device probe) shown while any check is not ok;
 - a budget meter and, if Hermes refuses injected alerts, the exact `allow_gateway_injection` YAML to copy.
 
 It polls the plugin's REST API at `/api/plugins/hermes-sentinel/` (no websocket) and fetches frames and snapshots as JSON data URLs (`?encoding=data_url`; without the parameter the endpoints return a raw JPEG). URL credentials are masked in every response, including token-only userinfo and secret-looking RTSP path segments.
@@ -141,7 +142,8 @@ It polls the plugin's REST API at `/api/plugins/hermes-sentinel/` (no websocket)
 ## Quick start
 
 ```
-/sentinel status                              # confirm it is loaded; shows budget and the YAML above
+/sentinel setup                               # step 1: checks packages, config, cameras, delivery, storage; tells you what to fix
+/sentinel status                              # then: state of the watcher; shows budget and the YAML above
 /sentinel here                                # once per session while Sentinel does not know its key (chat or local)
 "Hermes, use the package-at-door recipe on camera:0"   # or any plain-English request
 ```
@@ -210,6 +212,7 @@ The agent uses these; you normally just talk to Hermes.
 | `sentinel_look` | Grab a frame now and describe it or answer a question. Returns a `MEDIA:` photo. Costs one vision check. |
 | `sentinel_events` | Search captured events by text, rule, time range (`today`, `yesterday`, `2h`, ISO-8601) and feedback. |
 | `sentinel_feedback` | Mark an event `correct` or `false_alarm`. A false alarm becomes a negative example and raises the rule's confidence threshold by 0.05 (to at most 0.95). Repeating the same verdict changes nothing. |
+| `sentinel_setup_check` | Readiness check with the exact fix for each problem (same as `/sentinel setup`). Takes no arguments. |
 | `sentinel_teach` | Add a `yes` or `no` example image from a file, an event photo, or the live frame. The two newest of each kind are sent with every check. |
 
 At most 50 rules can exist in total, across all chats (not 50 per chat). Plain-English compiling is limited to 10 per hour per running plugin instance (recipes are not counted).
@@ -220,6 +223,7 @@ At most 50 rules can exist in total, across all chats (not 50 per chat). Plain-E
 
 | Command | What it does |
 |---|---|
+| `setup` (`check`, `doctor`) | One-command readiness check: Python packages, `allow_gateway_injection`, vision model, cameras and monitors, `default_source`, watcher, storage and disk, alert route, budget, rules. Ends with `Ready: yes/no - N things to fix`. Probes cameras for a few seconds. |
 | `status` (or `st`) | State of the watcher, sources, rules, budget, delivery problems and config warnings. |
 | `list` (`ls`, `rules`) | Rules with state and last event. |
 | `pause <rule_id>` / `resume <rule_id>` | Disable or enable a rule. |
@@ -292,6 +296,7 @@ This section covers the catalog's rule 13.
 
 | Symptom | Check |
 |---|---|
+| Anything does not work | Run `/sentinel setup`; it lists what is missing and the fix. |
 | No alerts arrive | Run `/sentinel status`. If it shows a delivery problem, add `allow_gateway_injection: true` (see Required setup) and restart. On Telegram/Discord send `/sentinel here`. Check the rule is `watching`, not paused, and inside its schedule. |
 | "Camera not found" or source offline | Run `sentinel_sources`. Another app may hold the webcam; try another index. On Linux check `/dev/video*` permissions. For streams, test the URL in a player; remember `${SECRET}` rules loaded at start-up cannot read secrets until resumed. |
 | Too many false alarms | Reply "false alarm" to alerts (each one tightens the rule by 0.05). Raise `confidence_threshold`, set `confirm_k` 3 of 4, add a `roi`, add `no` examples with `sentinel_teach`, or rewrite the question to be more specific. |

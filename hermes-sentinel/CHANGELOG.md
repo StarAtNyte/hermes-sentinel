@@ -6,6 +6,9 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ### Added
 
+- `/sentinel setup` and the `sentinel_setup_check` tool (9 tools now): one command that checks Python packages, the `allow_gateway_injection` setting, the vision model, cameras and monitors, `default_source`, watcher state, storage and free disk, the alert route, budget caps and rules with offline sources, then prints `Ready: yes/no - N things to fix` with the exact fix for each problem.
+- Dashboard `GET /setup` and a compact Setup checklist card on the Desktop pane (shown while any check is not ok).
+- `sentinel_watch` points at `/sentinel setup` when a fail-level problem exists.
 - Desktop pane (`desktop/plugin.js`, backend `dashboard/plugin_api.py`): source tiles, rules with pause/resume/delete, Watch form, event timeline with feedback buttons, status chip.
 - `encoding=data_url` on the frame and snapshot endpoints (JSON `{ok, data_url}`); raw JPEG without the parameter.
 

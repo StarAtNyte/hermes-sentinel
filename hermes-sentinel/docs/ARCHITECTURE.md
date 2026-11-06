@@ -27,7 +27,8 @@ capture thread (one per source) --frame--> ChangeGate (one per rule, ROI aware)
 | `budget.py` | `Budget`: hourly and rolling-day caps over the store's `usage` table; one exhaustion notice per episode. |
 | `store.py` | `Store`: SQLite (rules, events, examples, usage, FTS5), snapshot files, retention and storage-cap pruning. |
 | `alerts.py` | `Alerter`: message formatting, untrusted-text handling, routes, rate limits, delivery-blocked state; `RouteBook`; origin capture and chat scoping helpers. |
-| `tools.py` | Eight tool schemas and handlers; `register_tools`. |
+| `tools.py` | Nine tool schemas and handlers; `register_tools`. |
+| `setup_check.py` | `run_checks(SetupEnv)`: pure, defensive readiness checks (deps, injection setting, vision model, devices, config, watcher, storage, route, budget, rules); `build_env` wires a live `Sentinel`; `/sentinel setup`, `sentinel_setup_check` and `GET /setup` share it. |
 | `commands.py` | `SentinelCommand` for `/sentinel`. |
 | `dashboard/plugin_api.py` | FastAPI router mounted by Hermes at `/api/plugins/hermes-sentinel/`. Finds the loaded `Sentinel` by scanning `sys.modules` for `hermes_plugins.hermes_sentinel[__home_*]`; masks source specs; serves frames and snapshots as raw JPEG or `?encoding=data_url` JSON. |
 | `desktop/plugin.js` | Desktop pane (SDK + React only): polling controller, source tiles, rules, Watch form, events, status chip. No websocket. |

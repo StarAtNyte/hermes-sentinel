@@ -35,6 +35,7 @@ capabilities:
     - sentinel_events
     - sentinel_feedback
     - sentinel_teach
+    - sentinel_setup_check
   provides_hooks: []
   provides_middleware: []
   requires_env: []

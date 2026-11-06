@@ -20,6 +20,7 @@ provides_tools:
   - sentinel_events
   - sentinel_feedback
   - sentinel_teach
+  - sentinel_setup_check
 provides_hooks: []
 capabilities: []
 config_schema:

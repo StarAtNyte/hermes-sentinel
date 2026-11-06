@@ -105,8 +105,9 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
 | `sentinel_events` | query event memory ("what happened at the door today?"), FTS + time range |
 | `sentinel_feedback` | mark an event correct / false alarm -> example images + threshold tuning |
 | `sentinel_teach` | attach a positive/negative example image to a rule |
+| `sentinel_setup_check` | one-shot readiness check: deps, injection setting, vision model, devices, config, storage, budget, rules; exact fixes |
 
-Slash: `/sentinel status|list|pause <id>|resume <id>|test <id>|budget`.
+Slash: `/sentinel setup|status|list|pause <id>|resume <id>|test <id>|budget`.
 
 ## 4. Config (`config_schema`)
 `default_source`, `vision_calls_per_hour` (60), `vision_calls_per_day` (500),

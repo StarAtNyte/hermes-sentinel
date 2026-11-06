@@ -428,6 +428,24 @@ async def sources() -> Any:
     return result if isinstance(result, Response) else _json(result)
 
 
+def _setup(probe: bool) -> dict[str, Any]:
+    sentinel = _need()
+    mod = _mod("setup_check")
+    checks = mod.run_checks(mod.SetupEnv.from_sentinel(sentinel, None, probe_sources=probe))
+    out: dict[str, Any] = {"ok": True, "probed": probe, **mod.summarize(checks),
+                           "summary": mod.format_report(checks).splitlines()[-1]}
+    out["checks"] = [{**c.to_dict(), "detail": _mask(c.detail), "fix": _mask(c.fix)}
+                     for c in checks]
+    return out
+
+
+@router.get("/setup")
+async def setup(probe: str | None = None) -> Any:
+    """Setup checklist. Devices are only probed with ``?probe=1`` (probing opens webcams)."""
+    result = await _run(_setup, (probe or "").lower() in ("1", "true", "yes"))
+    return result if isinstance(result, Response) else _json(result)
+
+
 def _frame(source_key: str) -> bytes:
     if not source_key or len(source_key) > MAX_KEY:
         raise ApiError(400, "invalid source key")

@@ -4,7 +4,7 @@
 
 * two auxiliary LLM tasks: ``sentinel_vision`` (the frame judge) and ``sentinel_rules`` (the
   text-only rule compiler), so users can route each to a suitable model;
-* the eight agent tools of DESIGN.md section 3 (``sentinel_*``);
+* the nine agent tools of DESIGN.md section 3 (``sentinel_*``);
 * the ``/sentinel`` slash command;
 * ``ctx.on_unload`` to stop the watcher threads and close the store.
 
@@ -35,7 +35,7 @@ def register(ctx: Any) -> None:
     ctx.register_command(
         "sentinel",
         handler=SentinelCommand(sentinel, __version__),
-        description="Sentinel visual watcher: status, rules, pause/resume, test, budget",
+        description="Sentinel visual watcher: setup, status, rules, pause/resume, test, budget",
         args_hint=ARGS_HINT,
     )
     ctx.on_unload(sentinel.shutdown)

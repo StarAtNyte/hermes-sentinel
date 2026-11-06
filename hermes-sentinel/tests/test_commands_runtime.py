@@ -139,9 +139,10 @@ def test_register_wires_tools_tasks_command_and_unload(loaded_plugin):
     ctx = loaded_plugin.ctx
     assert sorted(ctx.tools) == sorted([
         "sentinel_sources", "sentinel_watch", "sentinel_rules", "sentinel_update",
-        "sentinel_look", "sentinel_events", "sentinel_feedback", "sentinel_teach"])
+        "sentinel_look", "sentinel_events", "sentinel_feedback", "sentinel_teach",
+        "sentinel_setup_check"])
     assert set(ctx.aux_tasks) == {"sentinel_vision", "sentinel_rules"}
-    assert ctx.commands["sentinel"]["args_hint"].startswith("[status")
+    assert ctx.commands["sentinel"]["args_hint"].startswith("[setup|status")
     engine_store = loaded_plugin.ctx.run_command("sentinel", "status")
     assert "idle" in engine_store
     ctx.unload()  # the on_unload callback (Sentinel.shutdown) runs cleanly

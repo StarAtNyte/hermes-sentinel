@@ -104,11 +104,12 @@ const enc = s => encodeURIComponent(String(s))
 
 const EMPTY_STATE = {
   status: null,
+  setup: null,     // GET /setup: { ready, to_fix, summary, checks: [{id,title,status,detail,fix}] }
   sources: [],
   rules: [],
   events: [],
-  loaded: { status: false, sources: false, rules: false, events: false },
-  errors: { status: null, sources: null, rules: null, events: null },
+  loaded: { status: false, sources: false, rules: false, events: false, setup: false },
+  errors: { status: null, sources: null, rules: null, events: null, setup: null },
   frames: {},      // source key -> { src, at }
   snaps: {},       // event id  -> data URL (or direct URL) of the snapshot
   thresholds: {},  // event id  -> threshold returned by the feedback endpoint
@@ -158,6 +159,15 @@ export function createController(ctx) {
         set({ status, loaded: { ...state.loaded, status: true }, errors: { ...state.errors, status: null } })
       } catch (err) {
         set({ loaded: { ...state.loaded, status: true }, errors: { ...state.errors, status: errMessage(err) } })
+      }
+    }),
+    // Fetched once per page view (and by the Check devices button): probing opens webcams.
+    setup: (probe = false) => guarded('setup', async () => {
+      try {
+        const setup = await call(probe ? '/setup?probe=1' : '/setup', { timeoutMs: WATCH_TIMEOUT_MS })
+        set({ setup, loaded: { ...state.loaded, setup: true }, errors: { ...state.errors, setup: null } })
+      } catch (err) {
+        set({ loaded: { ...state.loaded, setup: true }, errors: { ...state.errors, setup: errMessage(err) } })
       }
     }),
     sources: () => guarded('sources', async () => {
@@ -259,6 +269,7 @@ export function createController(ctx) {
     set({ now: Date.now() })
     if (pageViews > 0) {
       if (due('status', INTERVALS.status, force)) loaders.status()
+      if (!state.loaded.setup && due('setup', 30, force)) loaders.setup(false)
       if (due('sources', INTERVALS.sources, force)) loaders.sources()
       if (due('rules', INTERVALS.rules, force)) loaders.rules()
       if (due('events', INTERVALS.events, force)) loaders.events()
@@ -357,6 +368,13 @@ export function createController(ctx) {
     })
   }
 
+  async function checkSetup(probe = true) {
+    return withBusy('setup', async () => {
+      await loaders.setup(probe)
+      return !state.errors.setup
+    })
+  }
+
   async function feedback(id, verdict) {
     if (verdict !== 'correct' && verdict !== 'false_alarm') return false
     return withBusy(`fb:${id}`, async () => {
@@ -380,7 +398,7 @@ export function createController(ctx) {
     pause: id => ruleAction(id, 'pause'),
     resume: id => ruleAction(id, 'resume'),
     remove: id => ruleAction(id, 'delete'),
-    watch, feedback
+    watch, feedback, checkSetup
   }
 }
 
@@ -426,6 +444,7 @@ const CSS = `
 .hs-conf{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ui-text-tertiary)}
 .hs-conf .hs-meter{width:80px}
 .hs-steps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.hs-fix{margin-top:2px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary)}
 .hs-error{color:var(--ui-text-secondary)}
 .hs-notice{padding:6px 10px;border-radius:4px;background:var(--ui-bg-quaternary)}
 .hs-notice[data-kind=error]{box-shadow:inset 0 0 0 1px var(--ui-accent)}
@@ -462,6 +481,37 @@ function DeliveryBanner({ delivery }) {
     el('div', { className: 'hs-muted', children: 'Add this to ~/.hermes/config.yaml and restart Hermes:' }),
     el('pre', { className: 'hs-pre', tabIndex: 0, 'aria-label': 'Config snippet', children: GATEWAY_YAML }),
     el(CopyButton, { text: GATEWAY_YAML, label: 'Copy config snippet', showLabel: true, buttonVariant: 'outline', buttonSize: 'xs' }))
+}
+
+/** Checks that are not ok, worst first. Pure (exported for tests). */
+export function setupIssues(setup) {
+  const checks = setup && Array.isArray(setup.checks) ? setup.checks : []
+  const rank = { fail: 0, warn: 1 }
+  return checks.filter(c => c && (c.status === 'fail' || c.status === 'warn'))
+    .sort((a, b) => rank[a.status] - rank[b.status])
+}
+
+function SetupCard({ setup, busy, controller }) {
+  const issues = setupIssues(setup)
+  if (!issues.length) return null
+  return h('section', { className: 'hs-card', 'aria-label': 'Setup' },
+    h('div', { className: 'hs-row' },
+      el('h2', { className: 'hs-h2 hs-grow', style: { margin: 0 }, children: 'Setup' }),
+      el(Button, {
+        size: 'xs', variant: 'ghost', disabled: busy, onClick: () => controller.checkSetup(true),
+        'aria-label': 'Check cameras and screens now', children: busy ? 'Checking...' : 'Check devices'
+      })),
+    el('div', { className: 'hs-muted', role: 'status', children: setup.summary || '' }),
+    el('ul', {
+      className: 'hs-list', 'aria-label': 'Setup checks',
+      children: issues.map(c => h('li', { key: c.id, className: 'hs-text' },
+        h('div', { className: 'hs-row' },
+          el(Badge, { variant: c.status === 'fail' ? 'destructive' : 'warn', size: 'xs', children: c.status === 'fail' ? 'Fix' : 'Review' }),
+          el('strong', { children: c.title }),
+          el('span', { className: 'hs-muted', children: c.detail })),
+        c.fix ? el('div', { className: 'hs-fix', children: c.fix }) : null))
+    }),
+    el('div', { className: 'hs-muted', children: 'The same checklist is available as /sentinel setup in chat.' }))
 }
 
 function StatusBar({ status, error, loaded }) {
@@ -683,6 +733,7 @@ export function SentinelPage({ controller }) {
     h('div', { className: 'hs-row' }, el('span', { className: 'hs-title', children: 'Sentinel' })),
     el(StatusBar, { status: s.status, error: s.errors.status, loaded: s.loaded.status }),
     el(DeliveryBanner, { delivery: s.status && s.status.delivery }),
+    el(SetupCard, { setup: s.setup, busy: !!s.busy.setup, controller }),
     s.notice
       ? h('div', { className: 'hs-notice hs-row', role: s.notice.kind === 'error' ? 'alert' : 'status', 'data-kind': s.notice.kind },
         el('span', { className: 'hs-grow', children: s.notice.message }),

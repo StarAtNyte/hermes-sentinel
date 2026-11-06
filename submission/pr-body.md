@@ -16,7 +16,7 @@ Rule modes: `trigger`, `condition` (true for N seconds), `absence` (expected thi
 
 | Surface | Use |
 |---|---|
-| `ctx.register_tool` (8 tools) | `sentinel_sources`, `sentinel_watch`, `sentinel_rules`, `sentinel_update`, `sentinel_look`, `sentinel_events`, `sentinel_feedback`, `sentinel_teach` |
+| `ctx.register_tool` (9 tools) | `sentinel_sources`, `sentinel_watch`, `sentinel_rules`, `sentinel_update`, `sentinel_look`, `sentinel_events`, `sentinel_feedback`, `sentinel_teach`, `sentinel_setup_check` |
 | `ctx.register_command` | `/sentinel status\|list\|pause\|resume\|test\|budget\|here\|help` |
 | `ctx.register_auxiliary_task` | `sentinel_vision` (frame judge, vision model) and `sentinel_rules` (text-only rule compiler), routable independently |
 | `ctx.llm` | Structured vision calls for the judge and rule compiling; no provider keys are read by the plugin |
@@ -25,7 +25,7 @@ Rule modes: `trigger`, `condition` (true for N seconds), `absence` (expected thi
 | `plugin_db` / plugin data dir | SQLite store and snapshots under `plugin-data/hermes-sentinel/` |
 | Dashboard / Desktop pane | `dashboard/manifest.json` + `dashboard/plugin_api.py` (FastAPI router at `/api/plugins/hermes-sentinel/`) and `desktop/plugin.js` (Desktop Plugin SDK + React only): live source tiles (latest frame, about 1 fps), rules with pause/resume/delete, a Watch form (free-text source, optional recipe), event timeline with snapshots and correct / false-alarm buttons, a status-bar chip and a budget/delivery banner. It polls over `ctx.rest` (no websocket) and fetches images as `?encoding=data_url` JSON; it reuses the same runtime, store and engine objects as the tools. The pane is enabled by default (no `defaultEnabled: false`); it shows an empty state and 503 writes if the dashboard process that serves `plugin_api.py` is not the process that runs the agent, so it must be hosted by that process (see README) |
 
-No hooks, no middleware, no `requires_env`. `capabilities.provides_tools` in the entry lists the eight tools above and matches `plugin.yaml` and `register(ctx)` (asserted by `tests/test_register.py`).
+No hooks, no middleware, no `requires_env`. `capabilities.provides_tools` in the entry lists the nine tools above and matches `plugin.yaml` and `register(ctx)` (asserted by `tests/test_register.py`).
 
 ### Disclosures (rule 13)
 
@@ -67,7 +67,7 @@ Single stills only (no motion, no audio); accuracy depends on the vision model; 
 - [ ] 3. No self-update: no update checker, no downloader, no remote `plugin.js`.
 - [ ] 4. First listing; later SHA bumps go in new PRs with `version` and screenshot URLs re-pinned.
 - [ ] 5. Submitted by the repository owner.
-- [ ] 6. `capabilities` lists the 8 tools, no hooks, middleware or env vars; matches `register(ctx)`.
+- [ ] 6. `capabilities` lists the 9 tools, no hooks, middleware or env vars; matches `register(ctx)`.
 - [ ] 7. Hermes install security scan (`hermes plugins validate` / install): `<FILL: result>`; every `caution` read and answered above.
 - [ ] 8. `desktop/plugin.js` imports only `@hermes/plugin-sdk`, `react` and `react/jsx-runtime` (no JSX source, the runtime import is the one the docs allow); no prototype patching, `eval`, dynamic import, script injection, `data-*` queries or `document.body` observers; no `window.hermesDesktop` calls.
 - [ ] 9. Only `ctx.*` public APIs; no core attribute rebinding; `hermes plugins validate` "no core override" check: `<FILL: result and any undocumented-import warnings>`.
