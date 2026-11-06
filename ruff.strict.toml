@@ -1,0 +1,28 @@
+# Strict ruff selection from the CLAUDE.md "Code standard". Not yet the active gate:
+#   ruff check --config ruff.strict.toml .
+# Once the refactor lands, fold this into pyproject.toml's [tool.ruff] and drop this file.
+target-version = "py311"
+line-length = 100
+extend-exclude = ["tests/fixtures/generated"]
+
+[lint]
+select = ["E", "F", "W", "I", "N", "D", "C901", "B", "SIM", "UP", "RET", "RSE"]
+# D203/D211 and D212/D213 are mutually exclusive pairs; the google convention disables
+# the conflicting members, listed here so the intent is explicit.
+ignore = ["D203", "D213"]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.per-file-ignores]
+# Tests, fixtures and dev scripts: docstrings and naming rules are relaxed, not code quality ones.
+"**/tests/**" = ["D", "N"]
+"tests_tools/**" = ["D", "N"]
+"scripts/**" = ["D", "N"]
+"**/conftest.py" = ["D", "N"]
+# The plugin directory name "hermes-sentinel" is fixed by Hermes and is not an importable name.
+"hermes-sentinel/__init__.py" = ["N999"]
+"hermes-sentinel/sentinel/__init__.py" = ["N999"]

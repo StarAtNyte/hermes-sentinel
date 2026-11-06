@@ -103,6 +103,54 @@ Before the deadline:
 - [ ] Demo video under 90 seconds showing the plugin working, posted on X tagging @NousResearch.
 - [ ] Typeform submitted with the PR link and the video link.
 
+## Code standard
+
+Every change, by a person or an agent, must meet this. The goal is code a reviewer enjoys reading.
+
+**Layout**
+- One responsibility per module, one concept per class. Group modules into packages by domain
+  (`sources/`, `vision/`, `rules/`, `storage/`, `engine/`, `alerts/`, `agent/`), never one flat folder.
+- Size limits: modules at most ~400 lines, classes at most ~250, functions at most ~40 (hard stop at 60).
+  Over a limit means split it, not "add a noqa".
+- `__init__.py` files only re-export a package's public names and hold nothing else. The plugin
+  root `__init__.py` contains `register(ctx)` and nothing more.
+- Tests mirror the package layout (`tests/storage/test_events.py` tests `sentinel/storage/events.py`).
+  Shared fakes live in `tests/harness/`.
+- No dead code, no commented-out code, no duplicated helpers, no TODOs without an issue or a date.
+
+**Naming and typing**
+- Full words, no invented abbreviations. Modules and functions `snake_case`, classes `PascalCase`,
+  constants `UPPER_SNAKE`. Names say what a thing is or does (`ChangeGate`, `judge_frame`), never `utils2` or `helper`.
+- Every public function, method and class has type hints and a docstring: what it does, args that
+  are not obvious, what it returns or raises. One-line docstrings are fine for simple things.
+- Prefer immutable dataclasses and enums over loose dicts and magic strings. No bare `dict` crossing a module boundary.
+
+**Design**
+- Pure logic (gate math, state machine, parsing, formatting) is separate from I/O (camera, DB, LLM, threads)
+  so it can be tested without fakes. Dependencies are passed in, not imported globally.
+- Explicit over clever: early returns over deep nesting (at most 3 levels), small named helpers over comments
+  that explain a block. Comments explain why, never what.
+- Errors: catch the narrowest exception, never `except Exception: pass`, always log or surface. Define
+  domain error types (`SourceError`, `StoreError`). Nothing in a background thread may die silently.
+- Threads and locks: every lock has a one-line comment saying what it guards; no I/O while holding a lock;
+  every thread is named, daemonised and joinable.
+- No behaviour changes inside a refactor commit. Refactors and features are separate commits.
+
+**JavaScript (`desktop/plugin.js`)**
+- Sections in a fixed order (constants, helpers, API client, components, registration), each with a header comment.
+  Small functions, no globals beyond constants, SDK-only imports (rule 8).
+
+**Enforced by tooling** (`scripts/check.sh` must pass before every commit)
+- `ruff check` and `ruff format --check` with rules for imports (I), naming (N), docstrings (D, public API),
+  complexity (C901, max 10), bugbear (B), simplify (SIM), pyupgrade (UP), and return/raise style (RET, RSE).
+- `scripts/structure_lint.py` fails on files, classes or functions over the size limits, flat-package
+  violations, an `__init__.py` with logic, and missing docstrings on public names.
+- Tests stay green and the count never drops in a refactor.
+
+**Git**
+- Conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`), one logical change each,
+  pushed after each feature. No Claude or Anthropic attribution (global rule).
+
 ## Real Hermes is off-limits by default
 
 - Do not run the Hermes CLI (`hermes ...`, `python3 ~/.hermes/hermes-agent/hermes ...`) in this project.
