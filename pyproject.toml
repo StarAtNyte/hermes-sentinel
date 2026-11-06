@@ -1,0 +1,41 @@
+# Dev tooling only for the hermes-sentinel workspace. Not a plugin dependency
+# declaration (Hermes reads pyproject.toml only when it sits next to plugin.yaml).
+[project]
+name = "hermes-sentinel-dev"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<10",
+    "pytest-asyncio>=0.23,<2",
+    "ruff>=0.6,<1",
+    # Synthetic test media (tests/harness/scenes.py). Dev only, not a plugin runtime dep.
+    "numpy>=1.26,<3",
+    # plugin.yaml parsing in tests/test_register.py. Dev only.
+    "pyyaml>=6,<7",
+    # Schema validation in the FakeLlm (mirrors agent/plugin_llm.py). Dev only.
+    "jsonschema>=4.18,<5",
+    # Plugin runtime deps (mirrors plugin.yaml python_dependencies) so tests exercise them.
+    "opencv-python-headless>=4.8,<6",
+    "mss>=9,<11",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["hermes-sentinel/tests", "tests_tools"]
+pythonpath = [".", "hermes-sentinel/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --import-mode=importlib"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["tests/fixtures/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# `hermes plugins validate` / `doctor` are not run here: hermes-agent v0.22.5 bootstraps
+# its runtime through its own package manager (the upstream catalog CI uses an internal
+# setup-pm composite action), so a faithful install is not a one-liner. Run them locally
+# with scripts/check.sh; the catalog PR's own CI runs validate at the pinned SHA.
+# Reference point if this is added later: hermes-agent tag v0.22.5 =
+# bf0203a794a07aac3ff764972ab9087baa4e4f4e.
+#
+# Third-party actions are referenced by major tag; pin them to full commit SHAs before
+# the repo goes public.
+
+jobs:
+  test:
+    name: lint + test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: Release quarantine (only packages published 7+ days ago)
+        run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Install dev dependencies
+        run: |
+          echo "uv --exclude-newer $UV_EXCLUDE_NEWER"
+          uv sync --group dev --exclude-newer "$UV_EXCLUDE_NEWER"
+
+      - name: ruff
+        run: uv run --no-sync ruff check .
+
+      - name: pytest (plugin tests)
+        run: |
+          if find hermes-sentinel/tests -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
+            uv run --no-sync pytest hermes-sentinel/tests
+          else
+            echo "no plugin tests yet"
+          fi
+
+      - name: pytest (tests_tools)
+        run: uv run --no-sync pytest tests_tools
+
+      - name: rule_lint (catalog admission rules)
+        run: uv run --no-sync python scripts/rule_lint.py hermes-sentinel
