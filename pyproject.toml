@@ -17,6 +17,10 @@ dev = [
     "pyyaml>=6,<7",
     # Schema validation in the FakeLlm (mirrors agent/plugin_llm.py). Dev only.
     "jsonschema>=4.18,<5",
+    # Dashboard API tests (tests/test_dashboard_api.py). Dev only: Hermes provides FastAPI to
+    # dashboard/plugin_api.py at runtime; httpx backs Starlette's TestClient.
+    "fastapi>=0.104,<1",
+    "httpx>=0.27,<1",
     # Plugin runtime deps (mirrors plugin.yaml python_dependencies) so tests exercise them.
     "opencv-python-headless>=4.8,<6",
     "mss>=9,<11",

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def register(ctx: Any) -> None:
     """Plugin entry point called by Hermes."""
     from .sentinel.commands import ARGS_HINT, SentinelCommand
-    from .sentinel.runtime import Sentinel, register_aux_tasks
+    from .sentinel.runtime import Sentinel, register_aux_tasks, set_active_sentinel
     from .sentinel.tools import register_tools
 
     register_aux_tasks(ctx)
@@ -39,4 +39,5 @@ def register(ctx: Any) -> None:
         args_hint=ARGS_HINT,
     )
     ctx.on_unload(sentinel.shutdown)
+    set_active_sentinel(sentinel)  # lets dashboard/plugin_api.py reach the same runtime
     sentinel.boot_delayed()

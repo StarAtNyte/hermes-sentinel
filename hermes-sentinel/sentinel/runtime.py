@@ -23,13 +23,37 @@ from .store import Store, StoreError
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LOCK_FILENAME", "Sentinel", "StoreError", "register_aux_tasks"]
+__all__ = [
+    "LOCK_FILENAME",
+    "Sentinel",
+    "StoreError",
+    "active_sentinel",
+    "register_aux_tasks",
+    "set_active_sentinel",
+]
 
 LOCK_FILENAME = "engine.lock"
 BOOT_DELAY_SECONDS = 25.0  # short-lived hermes commands exit before the cameras ever open
 ALERTS_PER_HOUR = 20  # every injected alert is a full agent turn on the main model
 NOTICES_PER_HOUR = 6
 ROUTES_FILENAME = "routes.json"
+
+
+_ACTIVE: Sentinel | None = None
+_ACTIVE_LOCK = threading.Lock()
+
+
+def set_active_sentinel(sentinel: Sentinel | None) -> None:
+    """Publish the loaded Sentinel so the dashboard API (a separately imported module) can
+    reach the same store/engine the tools use. ``None`` clears it."""
+    global _ACTIVE
+    with _ACTIVE_LOCK:
+        _ACTIVE = sentinel
+
+
+def active_sentinel() -> Sentinel | None:
+    with _ACTIVE_LOCK:
+        return _ACTIVE
 
 
 def register_aux_tasks(ctx: Any) -> list[str]:
@@ -231,6 +255,10 @@ class Sentinel:
             self._engine = None
             self._store = None
             self._budget = None
+        global _ACTIVE
+        with _ACTIVE_LOCK:
+            if _ACTIVE is self:
+                _ACTIVE = None
         if timer is not None:
             timer.cancel()
         if engine is not None:

@@ -302,6 +302,7 @@ class Engine:
         self._examples: OrderedDict[tuple[str, float], bytes] = OrderedDict()
         self._examples_lock = threading.Lock()
         self.last_error = ""
+        self.started_at: float | None = None  # wall clock of the last successful start
 
     # ---- lifecycle --------------------------------------------------------------------
 
@@ -337,6 +338,7 @@ class Engine:
             self._stop.clear()
             self._standing_by = False
             self._running = True
+            self.started_at = self._wall()
             for rt in self._rules.values():  # a job cut off by a timed-out stop()
                 rt.in_flight = False
             self.sync_from_store()
@@ -588,6 +590,39 @@ class Engine:
         if worker is None:
             return "missing"
         return self._step_worker(worker)
+
+    def source_key(self, spec: str) -> str:
+        """The grouping key (credentials redacted) a rule's source spec maps to."""
+        return self._source_key(spec)
+
+    def source_infos(self) -> dict[str, dict[str, Any]]:
+        """Per capture worker: online flag, last error, seconds since the last frame, rule ids.
+
+        Pure in-memory read (no device I/O)."""
+        now = self._clock()
+        with self._lock:
+            workers = list(self._workers.values())
+        out: dict[str, dict[str, Any]] = {}
+        for w in workers:
+            with w.latest_lock:
+                latest = w.latest
+            out[w.key] = {
+                "online": bool(w.online),
+                "error": _short_error(w.last_error) if w.last_error else None,
+                "last_frame_age_s": round(max(0.0, now - latest[0]), 1) if latest else None,
+                "rules": sorted(w.rule_ids),
+            }
+        return out
+
+    def latest_frame(self, key: str) -> Any | None:
+        """The capture thread's newest frame for source ``key``; never opens a device."""
+        with self._lock:
+            worker = self._workers.get(key)
+        if worker is None:
+            return None
+        with worker.latest_lock:
+            latest = worker.latest
+        return latest[1] if latest else None
 
     def source_keys(self) -> list[str]:
         with self._lock:

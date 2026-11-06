@@ -1,0 +1,8 @@
+{
+  "name": "hermes-sentinel",
+  "label": "Sentinel",
+  "description": "Backend for the Sentinel desktop panel: watch rules, sources, live frames and events.",
+  "version": "0.1.0",
+  "tab": { "path": "/sentinel", "hidden": true },
+  "api": "plugin_api.py"
+}

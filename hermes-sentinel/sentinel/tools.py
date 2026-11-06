@@ -461,8 +461,11 @@ class SentinelTools:
         *,
         compile_per_hour: int = COMPILE_CALLS_PER_HOUR,
         clock: Callable[[], float] = time.monotonic,
+        owner_origin: Mapping[str, Any] | None = None,
     ) -> None:
         self.s = sentinel
+        #: When set, every call acts as this fixed (local) origin; used by the dashboard API.
+        self._owner_origin = dict(owner_origin) if owner_origin is not None else None
         self._compile_cap = _HourlyCap(compile_per_hour, clock)
         self._asked_here: set[str] = set()
         self._asked_lock = threading.Lock()
@@ -506,6 +509,8 @@ class SentinelTools:
 
     def _caller(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         """The calling session's origin (``capture_origin``): who may see which rules."""
+        if self._owner_origin is not None:
+            return dict(self._owner_origin)
         return capture_origin(kwargs, self.s.ctx, routes=self.s.routes)
 
     def _rule(self, rule_id: str, caller: Mapping[str, Any] | None = None) -> RuleSpec:
@@ -622,6 +627,17 @@ class SentinelTools:
         return (f" To make sure alerts come back to {where}, ask the user to send "
                 "'/sentinel here' once.")
 
+    @staticmethod
+    def status_text(spec: RuleSpec, engine: Any, status: Mapping[str, Any] | None) -> str:
+        """Human status of a rule: paused, not running, starting, source offline, or state."""
+        if not spec.enabled:
+            return "paused"
+        if status is None or not engine.running:
+            return "starting" if engine and engine.running else "not running"
+        if status.get("source_online") is False:
+            return f"source offline: {status.get('source_error') or 'unknown'}"
+        return str(status.get("state", "idle"))
+
     def sentinel_rules(self, args: dict, **kwargs: Any) -> str:
         rule_id = _str_arg(args, "rule_id", limit=64)
         store = self.s.store
@@ -633,14 +649,7 @@ class SentinelTools:
         for spec in specs:
             entry = _rule_brief(spec)
             status = engine.rule_status(spec.id) if engine is not None else None
-            if not spec.enabled:
-                entry["status"] = "paused"
-            elif status is None or not engine.running:
-                entry["status"] = "starting" if engine and engine.running else "not running"
-            elif status.get("source_online") is False:
-                entry["status"] = f"source offline: {status.get('source_error') or 'unknown'}"
-            else:
-                entry["status"] = status.get("state", "idle")
+            entry["status"] = self.status_text(spec, engine, status)
             if status:
                 entry["checks_since_load"] = status.get("checks")
                 entry["last_checked"] = status.get("last_checked")
