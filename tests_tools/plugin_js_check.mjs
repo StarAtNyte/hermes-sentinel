@@ -59,7 +59,7 @@ function makeCtx(routes) {
   const calls = []
   const intervals = []
   const ctx = {
-    calls, intervals, registered: [], socketOff: 0,
+    calls, intervals, registered: [], socketOpened: 0,
     rest: async (p, o = {}) => {
       calls.push({ p, o })
       const key = (o.method || 'GET') + ' ' + p.split('?')[0]
@@ -67,7 +67,7 @@ function makeCtx(routes) {
       if (!h) throw new Error('404: {"ok":false,"error":"not found"}')
       return typeof h === 'function' ? h(o, p) : h
     },
-    socket: () => () => { ctx.socketOff += 1 },
+    socket: () => { ctx.socketOpened += 1; return () => {} },
     setInterval: (fn, ms) => { const it = { fn, ms, off: false }; intervals.push(it); return () => { it.off = true } },
     addEventListener: () => () => {},
     registerMany: cs => ctx.registered.push(...cs),
@@ -182,7 +182,7 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
 
   release()
   assert.equal(ctx.intervals[0].off, true)
-  assert.equal(ctx.socketOff, 1)
+  assert.equal(ctx.socketOpened, 0) // the backend serves no websocket: polling only
 }
 
 // 4. engine down / errors degrade gracefully
@@ -199,7 +199,7 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   assert.match(text(expand(m.SentinelPage({ controller: c }))), /Status unavailable: not found/)
 }
 
-// 5. image fallback to direct URL when backend only serves raw jpeg
+// 5. image fallback: only a parse failure means 'direct'; 404 stays missing; transport errors retry
 {
   const r = base()
   r['GET /frame/camera%3A0'] = () => { throw new Error('Expected JSON but got image/jpeg') }
@@ -210,6 +210,50 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   c.tick(true)
   await settle()
   assert.match(c.getState().frames['camera:0'].src, /^\/api\/plugins\/hermes-sentinel\/frame\/camera%3A0\?t=\d+$/)
+}
+{
+  // 404 -> missing, never direct
+  const r = base()
+  r['GET /frame/camera%3A0'] = () => { throw new Error('404: {"ok":false,"error":"no frame available"}') }
+  const c = m.createController(makeCtx(r))
+  c.retain('page'); await settle(); c.tick(true); await settle()
+  assert.equal(c.getState().frames['camera:0'].missing, true)
+  assert.equal(c.getState().frames['camera:0'].src, null)
+}
+{
+  // one transient transport error does not latch direct mode; the next tick recovers
+  const r = base()
+  let n = 0
+  r['GET /frame/camera%3A0'] = () => {
+    n += 1
+    if (n === 1) throw new Error('fetch failed: ECONNRESET')
+    return { ok: true, data_url: 'data:image/jpeg;base64,CCCC' }
+  }
+  const c = m.createController(makeCtx(r))
+  c.retain('page'); await settle(); c.tick(true); await settle()
+  assert.equal(c.getState().frames['camera:0'].src, null)
+  assert.equal(c.getState().frames['camera:0'].missing, true)
+  c.tick(true); await settle()
+  assert.equal(c.getState().frames['camera:0'].src, 'data:image/jpeg;base64,CCCC')
+}
+
+// 5b. long rule status renders in a wrapping span, short state stays a Badge; free-text source
+{
+  const r = base()
+  const long = 'source offline: ' + 'x'.repeat(80)
+  r['GET /rules'] = [{ ...RULE, status: long }]
+  const c = m.createController(makeCtx(r))
+  c.retain('page'); await settle()
+  const tree = expand(m.SentinelPage({ controller: c }))
+  assert.equal(find(tree, n => n.type === 'Badge' && String(n.children).includes('source offline')).length, 0)
+  assert.equal(find(tree, n => n.type === 'div' && text(n) === long).length, 1)
+  const form = find(tree, n => n.type === 'form')[0]
+  assert.equal(find(form, n => n.type === 'select' && n.props.id === 'hs-watch-source').length, 0)
+  const input = find(form, n => n.type === 'input' && n.props.id === 'hs-watch-source')[0]
+  assert.match(input.props.placeholder, /camera:0/)
+  const opts = find(form, n => n.type === 'datalist').flatMap(d => d.children).map(o => o.props.value)
+  assert.ok(opts.length > 0 && opts.every(v => !v.includes('***') && !v.includes('%2A')))
+  assert.doesNotMatch(text(tree), /detected automatically/)
 }
 
 // 6. chip-only viewer polls status only

@@ -2,7 +2,7 @@
 //
 // SDK-only (catalog rule 8): imports are '@hermes/plugin-sdk', 'react' and 'react/jsx-runtime'
 // only; no JSX (disk plugins load uncompiled); no DOM access outside the React tree; the
-// backend is reached through ctx.rest / ctx.socket (/api/plugins/hermes-sentinel/...).
+// backend is reached through ctx.rest (/api/plugins/hermes-sentinel/...).
 //
 // Sections (the loader wants one file, so they are marked):
 //   1. constants + pure helpers          (exported for tests)
@@ -36,13 +36,15 @@ export const RECIPES = [
 ]
 
 export const MAX_RULE_TEXT = 500
+export const MAX_SOURCE = 2048
 const MAX_EVENTS = 50
 const MAX_SNAPSHOT_CACHE = 80
 const REST_TIMEOUT_MS = 8000
 const WATCH_TIMEOUT_MS = 30000
 
 /** Seconds between refreshes of each resource while the page is open. */
-export const INTERVALS = { status: 2, sources: 3, rules: 4, events: 4, frame: 1 }
+export const DIRECT_RETRY_MS = 60000
+const INTERVALS = { status: 2, sources: 3, rules: 4, events: 4, frame: 1 }
 /** The status-bar chip alone only needs the status, and not often. */
 const CHIP_STATUS_INTERVAL = 5
 
@@ -124,9 +126,11 @@ export function createController(ctx) {
   let chipViews = 0
   let timer = null
   let hidden = false
-  let socketOff = null
-  // 'data' once the backend answers ?encoding=data_url; 'direct' falls back to <img src>.
+  // 'data' once the backend answers ?encoding=data_url; 'direct' falls back to <img src> when
+  // the reply cannot be parsed as the JSON form (an old backend serving raw jpeg). Direct mode
+  // is retried after DIRECT_RETRY_MS, and transport errors alone never switch to it.
   let imageMode = 'unknown'
+  let directSince = 0
 
   const emit = () => { listeners.forEach(fn => fn()) }
   const set = patch => { state = { ...state, ...patch }; emit() }
@@ -188,22 +192,30 @@ export function createController(ctx) {
   // with a plain <img src> instead (works wherever the page origin can reach the API).
   function directUrl(path) { return `${API_BASE}${path}` }
 
+  const isNotFound = err => /\b404\b|not found/i.test(String(err && err.message))
+  // The bridge could not parse the body: the backend answered with something that is not JSON.
+  const isParseFailure = err => /json|parse|unexpected token|image\/jpeg/i.test(String(err && err.message))
+
   async function fetchImage(path) {
-    if (imageMode !== 'direct') {
-      try {
-        const sep = path.includes('?') ? '&' : '?'
-        const res = await ctx.rest(`${path}${sep}encoding=data_url`, { timeoutMs: REST_TIMEOUT_MS })
-        if (res && typeof res.data_url === 'string' && res.data_url.startsWith('data:image/')) {
-          imageMode = 'data'
-          return { src: res.data_url, missing: false }
-        }
-        if (res && res.ok === false) return { src: null, missing: true }
-      } catch (err) {
-        if (/404|not found/i.test(String(err && err.message))) return { src: null, missing: true }
-        if (imageMode === 'data') return { src: null, missing: true }
+    if (imageMode === 'direct' && Date.now() - directSince > DIRECT_RETRY_MS) imageMode = 'unknown'
+    if (imageMode === 'direct') return { src: null, direct: true }
+    try {
+      const sep = path.includes('?') ? '&' : '?'
+      const res = await ctx.rest(`${path}${sep}encoding=data_url`, { timeoutMs: REST_TIMEOUT_MS })
+      if (res && typeof res.data_url === 'string' && res.data_url.startsWith('data:image/')) {
+        imageMode = 'data'
+        return { src: res.data_url, missing: false }
       }
-      imageMode = 'direct'
+      if (res && res.ok === false) return { src: null, missing: true }
+    } catch (err) {
+      if (isNotFound(err)) return { src: null, missing: true }
+      if (!isParseFailure(err)) {
+        // Transport / server failure: keep the current mode and try again on the next tick.
+        return { src: null, missing: true }
+      }
     }
+    imageMode = 'direct'
+    directSince = Date.now()
     return { src: null, direct: true }
   }
 
@@ -276,23 +288,9 @@ export function createController(ctx) {
     timer = null
   }
 
-  // The socket only accelerates polling; on OAuth remotes it is a no-op.
-  function openSocket() {
-    if (socketOff || typeof ctx.socket !== 'function') return
-    try {
-      socketOff = ctx.socket('/events', () => { loaders.events(); loaders.status() })
-    } catch { socketOff = null }
-  }
-
-  function closeSocket() {
-    if (pageViews > 0 || !socketOff) return
-    try { socketOff() } catch { /* already closed */ }
-    socketOff = null
-  }
-
   /** Mount a viewer. kind: 'page' (everything) or 'chip' (status only). Returns release(). */
   function retain(kind) {
-    if (kind === 'page') { pageViews += 1; openSocket() } else { chipViews += 1 }
+    if (kind === 'page') pageViews += 1; else chipViews += 1
     ensureTimer()
     tick(true)
     let released = false
@@ -300,7 +298,6 @@ export function createController(ctx) {
       if (released) return
       released = true
       if (kind === 'page') pageViews -= 1; else chipViews -= 1
-      closeSocket()
       stopTimer()
     }
   }
@@ -344,7 +341,7 @@ export function createController(ctx) {
     const v = validateWatch(text)
     if (!v.ok) { say('error', v.error); return false }
     const body = { text: v.text }
-    if (source) body.source = source
+    if (source && source.trim()) body.source = source.trim()
     if (recipe) body.recipe = recipe
     return withBusy('watch', async () => {
       try {
@@ -512,7 +509,7 @@ function Onboarding({ sources }) {
   return h('div', { className: 'hs-card' },
     el('div', { className: 'hs-title', children: 'Nothing is being watched yet' }),
     h('ol', { className: 'hs-steps' },
-      el('li', { children: sources.length ? 'Pick a source below (cameras and screens are detected automatically).' : 'Connect a camera or choose the screen as a source.' }),
+      el('li', { children: sources.length ? 'Sources appear here once a rule uses them. Name one in the Source field below, such as camera:0 or screen.' : 'Name a source in the Source field below, such as camera:0 or screen, or leave it empty to use the default.' }),
       el('li', { children: 'Describe what to watch for in plain English, for example "a package at the front door".' }),
       el('li', { children: 'Sentinel checks frames locally and only asks the vision model when something changes. Confirmed events show up here and in chat.' })))
 }
@@ -530,6 +527,8 @@ function SourcesSection({ s, controller }) {
     body)
 }
 
+const shortStatus = status => typeof status === 'string' && status.length > 0 && status.length <= 24
+
 function RuleRow({ rule, controller, busy }) {
   const [confirming, setConfirming] = useState(false)
   const paused = !!rule.paused
@@ -537,7 +536,11 @@ function RuleRow({ rule, controller, busy }) {
     h('div', { className: 'hs-row' },
       el('span', { className: 'hs-grow hs-text', children: rule.text }),
       el(Badge, { variant: 'outline', children: rule.mode }),
-      el(Badge, { variant: paused ? 'muted' : 'success', children: paused ? 'paused' : rule.status })),
+      paused || shortStatus(rule.status)
+        ? el(Badge, { variant: paused ? 'muted' : 'success', children: paused ? 'paused' : rule.status })
+        : null),
+    !paused && !shortStatus(rule.status)
+      ? el('div', { className: 'hs-muted hs-text', children: String(rule.status) }) : null,
     h('div', { className: 'hs-row hs-muted' },
       el('span', { children: `Source ${rule.source}` }),
       el('span', { children: `${rule.vision_calls_hour ?? 0} vision calls/h` }),
@@ -568,6 +571,10 @@ function WatchForm({ sources, controller, busy }) {
   const [text, setText] = useState('')
   const [source, setSource] = useState('')
   const [recipe, setRecipe] = useState('')
+  // Suggestions are never the masked keys the API returns (those cannot be used as a source).
+  const suggestions = [...new Set(['camera:0', 'screen', ...sources
+    .filter(s => s && typeof s.key === 'string' && !s.key.includes('***') && !s.key.includes('%2A'))
+    .map(s => s.key)])].slice(0, 12)
   const submit = async ev => {
     if (ev && ev.preventDefault) ev.preventDefault()
     if (await controller.watch({ text, source, recipe })) { setText(''); setRecipe('') }
@@ -583,9 +590,15 @@ function WatchForm({ sources, controller, busy }) {
     h('div', { className: 'hs-row' },
       h('div', { className: 'hs-field' },
         el('label', { htmlFor: 'hs-watch-source', children: 'Source' }),
-        h('select', { id: 'hs-watch-source', className: 'hs-input', value: source, onChange: e => setSource(e.target.value) },
-          el('option', { value: '', children: 'Default source' }),
-          ...sources.map(s => el('option', { key: s.key, value: s.key, children: s.label || s.key })))),
+        el('input', {
+          id: 'hs-watch-source', className: 'hs-input', value: source, maxLength: MAX_SOURCE,
+          list: suggestions.length ? 'hs-watch-source-list' : undefined, autoComplete: 'off',
+          placeholder: 'default source (e.g. camera:0, screen)',
+          onChange: e => setSource(e.target.value)
+        }),
+        suggestions.length
+          ? h('datalist', { id: 'hs-watch-source-list' },
+            ...suggestions.map(v => el('option', { key: v, value: v }))) : null),
       h('div', { className: 'hs-field' },
         el('label', { htmlFor: 'hs-watch-recipe', children: 'Recipe (optional)' }),
         h('select', { id: 'hs-watch-recipe', className: 'hs-input', value: recipe, onChange: e => setRecipe(e.target.value) },

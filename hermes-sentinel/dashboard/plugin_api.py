@@ -18,10 +18,13 @@ blocking work runs in worker threads.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import importlib
 import json
 import logging
 import re
+import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,7 +53,12 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _INT_RE = re.compile(r"^[0-9]{1,12}$")
 _VERDICTS = ("correct", "false_alarm")
 _NO_STORE = {"Cache-Control": "no-store"}
-_NOT_LOADED = "Sentinel is not loaded in this process"
+_NOT_LOADED = (
+    "Sentinel is not loaded in this process: the Desktop pane must be served by the same "
+    "Hermes process that runs the agent and loaded the hermes-sentinel plugin"
+)
+_NAMESPACE_SUFFIX = "__home_"  # Hermes names a second-scope plugin hermes_sentinel__home_<digest>
+MAX_DATA_URL_BYTES = 4 * 1024 * 1024  # larger images are not inlined
 
 
 class ApiError(Exception):
@@ -71,16 +79,43 @@ def _json(payload: Any, status: int = 200) -> JSONResponse:
 # --------------------------------------------------------------------------- plugin access
 
 
+def _package_names() -> list[str]:
+    """Names of loaded Sentinel plugin packages (Hermes names vary by profile scope)."""
+    return sorted(
+        k for k in list(sys.modules)
+        if k == PACKAGE or k.startswith(PACKAGE + _NAMESPACE_SUFFIX)
+    )
+
+
+def _active() -> tuple[str, Any] | None:
+    """``(package name, Sentinel)`` of the loaded plugin whose runtime has a live Sentinel."""
+    for name in _package_names():
+        try:
+            runtime = importlib.import_module(f"{name}.sentinel.runtime")
+            sentinel = runtime.active_sentinel()
+        except Exception:  # noqa: BLE001 - partially imported / foreign module
+            continue
+        if sentinel is not None:
+            return name, sentinel
+    return None
+
+
+def _package() -> str:
+    found = _active()
+    if found is not None:
+        return found[0]
+    names = _package_names()
+    return names[0] if names else PACKAGE
+
+
 def _mod(name: str) -> Any:
-    return importlib.import_module(f"{PACKAGE}.sentinel.{name}")
+    return importlib.import_module(f"{_package()}.sentinel.{name}")
 
 
 def _sentinel() -> Any | None:
     """The loaded :class:`Sentinel`, or ``None`` when the plugin is not loaded here."""
-    try:
-        return _mod("runtime").active_sentinel()
-    except Exception:  # noqa: BLE001 - plugin package not imported in this process
-        return None
+    found = _active()
+    return found[1] if found is not None else None
 
 
 _TOOLS: dict[int, Any] = {}
@@ -108,7 +143,7 @@ def _need() -> Any:
 
 def _version() -> str:
     try:
-        return str(importlib.import_module(PACKAGE).__version__)
+        return str(importlib.import_module(_package()).__version__)
     except Exception:  # noqa: BLE001
         return "unknown"
 
@@ -169,10 +204,45 @@ def _check_event_id(event_id: str) -> int:
 # --------------------------------------------------------------------------- masking
 
 
+_PREFIX_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*:)(?=[A-Za-z][A-Za-z0-9+.-]*://)")
+_GENERIC_SEGMENT_RE = re.compile(
+    r"^(?:stream|ch|channel|cam|camera|video|profile|live|main|sub|h26[45]|streaming|channels|"
+    r"media|unicast|onvif)\d*$|^\d{1,4}$", re.IGNORECASE)
+_USERINFO_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)([^/?#@]*)@")
+
+
+def _mask_word(redact: Any, word: str) -> str:
+    """Redact one ``scheme://`` word, including ``snapshot:https://...`` style prefixes."""
+    prefix = ""
+    m = _PREFIX_RE.match(word)
+    if m:
+        prefix, word = m.group(1), word[m.end():]
+    word = redact(word)
+    m = _USERINFO_RE.match(word)
+    if m and "${" not in m.group(2):
+        word = f"{m.group(1)}***@{word[m.end():]}"  # token-only userinfo
+    # RTSP URLs often carry the secret in the path (rtsp://h/live/<token>). Keep only generic
+    # path segments (stream1, ch2, live, 101...); otherwise show a short digest so two
+    # cameras on one recorder stay distinguishable without revealing the path.
+    low = word.lower()
+    if low.startswith(("rtsp://", "rtsps://")) and "${" not in word:
+        scheme, _, rest = word.partition("://")
+        hostpart, slash, tail = rest.partition("/")
+        path = tail.split("?", 1)[0]
+        segments = [seg for seg in path.split("/") if seg]
+        if slash and segments and not all(_GENERIC_SEGMENT_RE.match(seg) for seg in segments):
+            digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:4]
+            query = f"?{tail.split('?', 1)[1]}" if "?" in tail else ""
+            word = f"{scheme}://{hostpart}/***~{digest}{query}"
+    return prefix + word
+
+
 def _mask(text: Any) -> str:
     """Make a source spec / error string safe to return: no URL credentials, bounded."""
     redact = _mod("sources").redact_url
-    out = " ".join(redact(w) if "://" in w else w for w in str(text or "").split(" "))
+    out = " ".join(
+        _mask_word(redact, w) if "://" in w else w for w in str(text or "").split(" ")
+    )
     return out[:MAX_SOURCE]
 
 
@@ -378,12 +448,27 @@ def _frame(source_key: str) -> bytes:
     return data
 
 
+def _image_response(data: bytes, encoding: str | None, headers: dict[str, str]) -> Response:
+    """Raw JPEG by default; ``encoding=data_url`` returns ``{ok, data_url}`` JSON instead.
+
+    Hermes' Desktop plugin REST bridge only carries JSON, so the pane asks for the data URL.
+    """
+    if encoding is None or encoding == "":
+        return Response(data, media_type="image/jpeg", headers=headers)
+    if encoding != "data_url":
+        return _fail(400, "encoding must be 'data_url' when given")
+    if len(data) > MAX_DATA_URL_BYTES:
+        return _fail(413, "image too large to inline")
+    url = "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+    return JSONResponse({"ok": True, "data_url": url}, headers=headers)
+
+
 @router.get("/frame/{source_key:path}")
-async def frame(source_key: str) -> Any:
+async def frame(source_key: str, encoding: str | None = None) -> Any:
     result = await _run(_frame, source_key)
     if isinstance(result, Response):
         return result
-    return Response(result, media_type="image/jpeg", headers=_NO_STORE)
+    return _image_response(result, encoding, _NO_STORE)
 
 
 def _list_rules() -> list[dict[str, Any]]:
@@ -482,12 +567,11 @@ def _snapshot(event_id: str) -> bytes:
 
 
 @router.get("/events/{event_id}/snapshot")
-async def snapshot(event_id: str) -> Any:
+async def snapshot(event_id: str, encoding: str | None = None) -> Any:
     result = await _run(_snapshot, event_id)
     if isinstance(result, Response):
         return result
-    return Response(result, media_type="image/jpeg",
-                    headers={"Cache-Control": "private, max-age=3600"})
+    return _image_response(result, encoding, {"Cache-Control": "private, max-age=3600"})
 
 
 def _feedback(event_id: str, data: dict[str, Any]) -> dict[str, Any]:

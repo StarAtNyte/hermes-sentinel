@@ -463,3 +463,127 @@ def test_watch_errors_never_leak_credentials(client, rig):
     resp = client.post(f"{BASE}/watch", json={"text": "x", "source": RTSP, "recipe": "nope"})
     assert resp.status_code == 400
     _no_secrets(resp)
+
+
+# --------------------------------------------------------------------------- data_url encoding
+
+
+def _decode_data_url(url: str) -> bytes:
+    import base64
+
+    head, _, b64 = url.partition(",")
+    assert head == "data:image/jpeg;base64"
+    return base64.b64decode(b64)
+
+
+def test_frame_data_url_encoding(client, rig):
+    _watch(rig)
+    rig.pump(1)
+    resp = client.get(f"{BASE}/frame/{CAM}", params={"encoding": "data_url"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    assert "no-store" in resp.headers["cache-control"]
+    body = resp.json()
+    assert body["ok"] is True
+    raw = _decode_data_url(body["data_url"])
+    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    assert img is not None and img.shape[1] <= 640
+    # without the parameter the raw JPEG contract is unchanged
+    assert client.get(f"{BASE}/frame/{CAM}").headers["content-type"] == "image/jpeg"
+
+
+def test_snapshot_data_url_encoding(client, rig):
+    ev = _event(rig, _watch(rig))
+    resp = client.get(f"{BASE}/events/{ev.id}/snapshot?encoding=data_url")
+    assert resp.status_code == 200 and resp.json()["ok"] is True
+    assert _decode_data_url(resp.json()["data_url"]).startswith(b"\xff\xd8")
+
+
+def test_data_url_errors_stay_json_404(client, rig):
+    _watch(rig)
+    rig.pump(1)
+    resp = client.get(f"{BASE}/frame/camera:99?encoding=data_url")
+    assert resp.status_code == 404 and resp.json()["ok"] is False
+    resp = client.get(f"{BASE}/events/9999/snapshot?encoding=data_url")
+    assert resp.status_code == 404 and resp.json()["ok"] is False
+
+
+def test_data_url_unknown_encoding_and_size_bound(client, rig, api, monkeypatch):
+    ev = _event(rig, _watch(rig))
+    assert client.get(f"{BASE}/events/{ev.id}/snapshot?encoding=base64").status_code == 400
+    monkeypatch.setattr(api, "MAX_DATA_URL_BYTES", 10)
+    resp = client.get(f"{BASE}/events/{ev.id}/snapshot?encoding=data_url")
+    assert resp.status_code == 413 and resp.json()["ok"] is False
+    # raw path is not subject to the inline bound
+    assert client.get(f"{BASE}/events/{ev.id}/snapshot").status_code == 200
+
+
+# --------------------------------------------------------------------------- package lookup
+
+
+def _fake_package(monkeypatch, name, active):
+    import types
+
+    pkg = types.ModuleType(name)
+    pkg.__path__ = []
+    rt = types.ModuleType(f"{name}.sentinel.runtime")
+    rt.active_sentinel = lambda: active
+    sent = types.ModuleType(f"{name}.sentinel")
+    sent.__path__ = []
+    entries = ((name, pkg), (f"{name}.sentinel", sent), (f"{name}.sentinel.runtime", rt))
+    for mod_name, mod in entries:
+        monkeypatch.setitem(sys.modules, mod_name, mod)
+
+
+def test_scoped_package_name_is_found(api, monkeypatch):
+    runtime.set_active_sentinel(None)
+    marker = object()
+    _fake_package(monkeypatch, "hermes_plugins.hermes_sentinel__home_abc123", marker)
+    assert api._sentinel() is marker
+
+
+def test_picks_the_package_with_an_active_sentinel(api, rig, monkeypatch):
+    _fake_package(monkeypatch, "hermes_plugins.hermes_sentinel__home_aaa", None)
+    assert api._sentinel() is rig.sentinel
+    assert api._package() == "hermes_plugins.hermes_sentinel"
+
+
+def test_unrelated_packages_are_ignored(api, monkeypatch):
+    runtime.set_active_sentinel(None)
+    _fake_package(monkeypatch, "hermes_plugins.hermes_sentinelx", object())
+    assert api._sentinel() is None
+
+
+def test_not_loaded_note_names_the_hosting_process(idle_client):
+    resp = idle_client.get(f"{BASE}/status")
+    assert "same Hermes process" in resp.json()["note"]
+    resp = idle_client.post(f"{BASE}/rules/abc/pause")
+    assert resp.status_code == 503 and "not loaded" in resp.json()["error"]
+
+
+# --------------------------------------------------------------------------- masking shapes
+
+
+@pytest.mark.parametrize("spec,secret", [
+    ("snapshot:https://u:pw@h.example/x.jpg", "pw"),
+    ("https://tok123@h.example/x", "tok123"),
+    ("folder:https://tok123@h.example/x", "tok123"),
+    ("rtsp://h.example/live/SECRETPATH", "SECRETPATH"),
+    ("rtsp://h.example:554/Streaming/s3cr3t-tok/ch1?x=1", "s3cr3t-tok"),
+])
+def test_mask_hides_credential_shapes(api, rig, spec, secret):
+    out = api._mask(spec)
+    assert secret not in out
+    assert "://" in out
+
+
+def test_mask_keeps_placeholders_and_generic_paths(api, rig):
+    assert api._mask("https://${CAM_USER}@h.example/x") == "https://${CAM_USER}@h.example/x"
+    assert api._mask("snapshot:https://u:${CAM_PW}@h.example/x.jpg").startswith("snapshot:https://")
+    assert "${CAM_PW}" in api._mask("snapshot:https://u:${CAM_PW}@h.example/x.jpg")
+    assert api._mask("rtsp://nvr/ch1") == "rtsp://nvr/ch1"
+    assert api._mask("camera:0") == "camera:0"
+    # two cameras behind one recorder stay distinguishable
+    a = api._mask("rtsp://nvr/secretAAAA")
+    b = api._mask("rtsp://nvr/secretBBBB")
+    assert a != b
