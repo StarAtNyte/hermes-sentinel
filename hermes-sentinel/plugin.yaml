@@ -1,0 +1,69 @@
+name: hermes-sentinel
+version: "0.0.1"
+manifest_version: 2
+api_version: 1
+description: "Watch cameras, the screen, or a web page for events you describe in plain English. A local change gate filters frames; only changed frames go to a vision model judge, and confirmed events wake the agent."
+author: "Nitij Khanal"
+license: MIT
+tags: [vision, monitoring, camera, screen]
+requires_hermes: ">=0.22.5"
+python_dependencies:
+  - "numpy>=1.26,<3"
+  - "opencv-python-headless>=4.8,<6"
+  - "mss>=9,<11"
+provides_tools:
+  - sentinel_sources
+  - sentinel_watch
+  - sentinel_rules
+  - sentinel_update
+  - sentinel_look
+  - sentinel_events
+  - sentinel_feedback
+  - sentinel_teach
+provides_hooks: []
+capabilities: []
+config_schema:
+  default_source:
+    type: str
+    default: "camera:0"
+    description: "Source used when a request names none: camera:N, screen[:N], rtsp://..., stream:<name>, snapshot:https://..., folder:/path."
+  vision_calls_per_hour:
+    type: int
+    default: 60
+    description: "Cap on vision-model checks per clock hour, across all rules (0 pauses judging)."
+  vision_calls_per_day:
+    type: int
+    default: 500
+    description: "Cap on vision-model checks per rolling 24 hours, across all rules."
+  confirm_k:
+    type: int
+    default: 2
+    description: "Positive verdicts needed out of the last confirm_n before a rule fires."
+  confirm_n:
+    type: int
+    default: 3
+    description: "Size of the confirmation window (k-of-n)."
+  confidence_threshold:
+    type: float
+    default: 0.7
+    description: "Minimum judge confidence (0..1) for a verdict to count as evidence."
+  idle_check_seconds:
+    type: float
+    default: 300
+    description: "Re-check every rule this often even without motion (0 disables)."
+  retention_days:
+    type: float
+    default: 7
+    description: "Delete events and snapshots older than this many days."
+  max_storage_mb:
+    type: float
+    default: 500
+    description: "Cap on snapshot storage; the oldest photos are pruned first."
+  stream_urls:
+    type: dict
+    default: {}
+    description: "Named streams, name -> URL. Put credentials in ${SECRET_NAME} placeholders; they are resolved through the Hermes secret scope, never stored."
+  alert_snapshots:
+    type: bool
+    default: true
+    description: "Attach the event photo (MEDIA:) to alerts."
