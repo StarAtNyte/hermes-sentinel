@@ -87,8 +87,9 @@ def test_sentinel_sources(rig, monkeypatch):
 
     def fake_list(**kw):
         seen.update(kw)
-        return [sources_mod.SourceInfo(spec="camera:0", kind="camera", name="Webcam 0",
-                                       available=True)]
+        return [
+            sources_mod.SourceInfo(spec="camera:0", kind="camera", name="Webcam 0", available=True)
+        ]
 
     monkeypatch.setattr(tools, "list_sources", fake_list)
     out = rig.call("sentinel_sources", probe_cameras=False)
@@ -124,18 +125,27 @@ def test_watch_asks_for_sentinel_here_once_per_session(rig):
 
 def test_watch_records_origin_from_kwargs(rig):
     raw = rig.ctx.tools["sentinel_watch"]["handler"](
-        {"recipe": "pet-on-couch", "source": CAM}, task_id="t1", session_id="sess-1")
+        {"recipe": "pet-on-couch", "source": CAM}, task_id="t1", session_id="sess-1"
+    )
     rule_id = json.loads(raw)["rule"]["rule_id"]
     origin = rig.sentinel.store.get_rule(rule_id).origin
     assert origin["session_id"] == "sess-1" and origin["surface"] == "cli"
 
 
 def test_watch_compiles_plain_english_with_overrides(rig):
-    rig.ctx.llm.script({"question": "Is the stove on?", "mode": "trigger"},
-                       purpose="sentinel:compile")
-    out = rig.call("sentinel_watch", what="tell me if the stove is left on", source=CAM,
-                   roi=[0.5, 0.5, 0.5, 0.5], hold_seconds=120, cooldown_seconds=60,
-                   action_prompt="text my partner", schedule={"start": "22:00", "end": "06:00"})
+    rig.ctx.llm.script(
+        {"question": "Is the stove on?", "mode": "trigger"}, purpose="sentinel:compile"
+    )
+    out = rig.call(
+        "sentinel_watch",
+        what="tell me if the stove is left on",
+        source=CAM,
+        roi=[0.5, 0.5, 0.5, 0.5],
+        hold_seconds=120,
+        cooldown_seconds=60,
+        action_prompt="text my partner",
+        schedule={"start": "22:00", "end": "06:00"},
+    )
     assert out["ok"], out
     rule = out["rule"]
     assert rule["question"] == "Is the stove on?" and rule["mode"] == "condition"
@@ -161,8 +171,10 @@ def test_watch_falls_back_offline(rig):
         ({"recipe": "pet-on-couch", "source": CAM, "roi": [0.9, 0.9, 0.5, 0.5]}, "roi"),
         ({"recipe": "pet-on-couch", "source": CAM, "roi": [1, 2]}, "roi"),
         ({"recipe": "pet-on-couch", "source": CAM, "hold_seconds": -1}, "non-negative"),
-        ({"recipe": "pet-on-couch", "source": CAM, "schedule": {"start": "25:00"}},
-         "invalid schedule"),
+        (
+            {"recipe": "pet-on-couch", "source": CAM, "schedule": {"start": "25:00"}},
+            "invalid schedule",
+        ),
         ({"what": "x" * 5000, "source": CAM}, "too long"),
     ],
 )
@@ -202,16 +214,26 @@ def test_update_pause_resume_edit_delete(rig):
     assert rig.engine.source_keys() == []
     out = rig.call("sentinel_update", rule_id=rule_id, action="resume")
     assert out["rule"]["enabled"] is True and rig.engine.source_keys() == [CAM]
-    out = rig.call("sentinel_update", rule_id=rule_id, action="edit", changes={
-        "question": "Is anyone at the desk?", "mode": "condition", "hold_seconds": 30,
-        "confidence_threshold": 0.8, "roi": None, "action_prompt": "say hi",
-        "schedule": None, "cooldown_seconds": 10})
+    out = rig.call(
+        "sentinel_update",
+        rule_id=rule_id,
+        action="edit",
+        changes={
+            "question": "Is anyone at the desk?",
+            "mode": "condition",
+            "hold_seconds": 30,
+            "confidence_threshold": 0.8,
+            "roi": None,
+            "action_prompt": "say hi",
+            "schedule": None,
+            "cooldown_seconds": 10,
+        },
+    )
     assert out["ok"], out
     rule = out["rule"]
     assert rule["question"] == "Is anyone at the desk?" and rule["mode"] == "condition"
     assert rule["action"] == "agent" and rule["confidence_threshold"] == 0.8
-    out = rig.call("sentinel_update", rule_id=rule_id, action="edit",
-                   changes={"action_prompt": ""})
+    out = rig.call("sentinel_update", rule_id=rule_id, action="edit", changes={"action_prompt": ""})
     assert out["rule"]["action"] == "notify"
     out = rig.call("sentinel_update", rule_id=rule_id, action="delete")
     assert out["ok"] and "events are kept" in out["message"]
@@ -244,8 +266,9 @@ def test_update_errors(rig, args, needle):
 
 
 def test_look_describes_and_saves_photo(rig):
-    rig.ctx.llm.script({"answer": "An empty desk.", "caption": "empty desk"},
-                       purpose="sentinel:look")
+    rig.ctx.llm.script(
+        {"answer": "An empty desk.", "caption": "empty desk"}, purpose="sentinel:look"
+    )
     out = rig.call("sentinel_look", source=CAM, question="Is anyone there?")
     assert out["ok"], out
     assert out["answer"] == "An empty desk." and out["media"].startswith("MEDIA:")
@@ -343,8 +366,7 @@ def test_false_alarm_threshold_is_capped(rig):
 
 def test_feedback_errors_and_deleted_rule(rig):
     rule_id = watch(rig)["rule"]["rule_id"]
-    assert "no event #99" in rig.call("sentinel_feedback", event_id=99,
-                                      verdict="correct")["error"]
+    assert "no event #99" in rig.call("sentinel_feedback", event_id=99, verdict="correct")["error"]
     assert rig.call("sentinel_feedback", event_id=1, verdict="meh")["ok"] is False
     assert rig.call("sentinel_feedback", event_id=1.5, verdict="correct")["ok"] is False
     ev = rig.sentinel.store.add_event(rule_id, caption="no photo")

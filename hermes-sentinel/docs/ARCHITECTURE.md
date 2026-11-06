@@ -13,25 +13,38 @@ capture thread (one per source) --frame--> ChangeGate (one per rule, ROI aware)
 
 ## Module map (`sentinel/`)
 
-| Module | Role |
+Refactored packages (`sources/`, `storage/`, `rules/`) meet the Code standard in `CLAUDE.md`: no structure_lint findings, `__init__.py` files only re-export. Rows marked **flat** are not refactored yet (see "Remaining refactor").
+
+| Path | Role |
 |---|---|
 | `__init__.py` (plugin root) | `register(ctx)`: aux tasks, tools, `/sentinel`, `on_unload`, delayed boot. |
-| `runtime.py` | `Sentinel`: lazily built service graph (store, budget, engine, route book, alerter, judge) for one plugin context. Delayed boot timer (25 s), prune hooks, `shutdown()`. |
-| `config.py` | `SentinelConfig.load`: reads `config_schema` keys via `ctx.get_config`, validates, records `problems` instead of raising. |
-| `sources.py` | `FrameSource` implementations (camera, stream, snapshot URL, screen, folder), `SourceSpec.parse`, `open_source`, `list_sources`, secret placeholder resolution, URL redaction, open timeouts. OpenCV and mss import lazily. |
-| `gate.py` | `ChangeGate`: structural-difference change detection, noise estimation, shake alignment, global-change re-baseline, idle tick. numpy required, OpenCV optional. |
-| `judge.py` | `Judge`: builds the request (frame, ROI crop, up to 2+2 examples), calls `ctx.llm.complete_structured` on task `sentinel_vision`, parses defensively; failures become `Verdict(error=...)`. Also `describe()` for `sentinel_look`. |
-| `rules.py` | `RuleSpec` (validated, JSON round-trip), `Schedule`, `RuleStateMachine`, `compile_rule` (LLM on `sentinel_rules`, deterministic fallback). |
-| `recipes.py` | Six bundled `Recipe`s and `build_rule`. |
-| `engine.py` | `Engine`: capture threads, gates, judge queue and workers, scheduler, source health, process lock, standby. |
-| `budget.py` | `Budget`: hourly and rolling-day caps over the store's `usage` table; one exhaustion notice per episode. |
-| `store.py` | `Store`: SQLite (rules, events, examples, usage, FTS5), snapshot files, retention and storage-cap pruning. |
-| `alerts.py` | `Alerter`: message formatting, untrusted-text handling, routes, rate limits, delivery-blocked state; `RouteBook`; origin capture and chat scoping helpers. |
-| `tools.py` | Nine tool schemas and handlers; `register_tools`. |
-| `setup_check.py` | `run_checks(SetupEnv)`: pure, defensive readiness checks (deps, injection setting, vision model, devices, config, watcher, storage, route, budget, rules); `build_env` wires a live `Sentinel`; `/sentinel setup`, `sentinel_setup_check` and `GET /setup` share it. |
-| `commands.py` | `SentinelCommand` for `/sentinel`. |
+| `runtime.py` **flat** | `Sentinel`: lazily built service graph (store, budget, engine, route book, alerter, judge) for one plugin context. Delayed boot timer (25 s), prune hooks, `shutdown()`. |
+| `config.py` **flat** | `SentinelConfig.load`: reads `config_schema` keys via `ctx.get_config`, validates, records `problems` instead of raising. |
+| `sources/` | Frame sources. `base.py` (`FrameSource`), `registry.py` (`open_source`), `discovery.py` (`list_sources`, camera and monitor probes), `frames.py`, `timeouts.py` (bounded opens), `dependencies.py` (lazy OpenCV, numpy, mss), `errors.py`, `constants.py`. `spec/` holds `SourceSpec`, parsing, validation, URL redaction and secret placeholder resolution. `backends/` holds `capture.py` (camera, stream), `snapshot.py`, `screen.py`, `folder.py`. |
+| `rules/` | `spec.py` (`RuleSpec`, validated, JSON round-trip), `spec_validation.py`, `schedule.py`, `validation.py`, `errors.py`, `constants.py`, `recipes.py` (six bundled `Recipe`s, `build_rule`). `machine/` is the pure, clock-injected `RuleStateMachine` (`state_machine.py`, `window.py`, `evidence.py`, `types.py`). `compiler/` is `compile_rule` (LLM on `sentinel_rules`, deterministic `fallback.py`, `schema.py`). |
+| `storage/` | `store.py` (`Store` facade), `database.py` (connection, single RLock, `tx()`/`read()`), `schema.py` (migrations, FTS5), `files.py` (snapshot and example images), `retention.py` (retention and storage-cap pruning), `records.py`, `errors.py`, `constants.py`. `repositories/` holds `rules.py`, `events.py`, `event_search.py`, `examples.py`, `usage.py`. |
+| `vision/` **partial** | `imaging.py`, `gate/` (`ChangeGate`: structural-difference change detection, noise estimation, shake alignment, global-change re-baseline, idle tick; numpy required, OpenCV optional) and `judge/` (`Judge`: request building, `ctx.llm.complete_structured` on task `sentinel_vision`, defensive parsing; failures become `Verdict(error=...)`). Flat `gate.py` and `judge.py` remain beside the package. |
+| `alerts/` **partial** | `Alerter` delivery, `formatting.py` (untrusted-text handling), `rate_limit.py`, `route_book.py` (`RouteBook`), `routing.py` (origin capture and chat scoping). |
+| `engine.py` **flat** | `Engine`: capture threads, gates, judge queue and workers, scheduler, source health, process lock, standby. |
+| `budget.py` **flat** | `Budget`: hourly and rolling-day caps over the store's `usage` table; one exhaustion notice per episode. |
+| `tools.py` **flat** | Nine tool schemas and handlers; `register_tools`. |
+| `setup_check.py` **flat** | `run_checks(SetupEnv)`: pure, defensive readiness checks; `build_env` wires a live `Sentinel`; shared by `/sentinel setup`, `sentinel_setup_check` and `GET /setup`. |
+| `commands.py` **flat** | `SentinelCommand` for `/sentinel`. |
 | `dashboard/plugin_api.py` | FastAPI router mounted by Hermes at `/api/plugins/hermes-sentinel/`. Finds the loaded `Sentinel` by scanning `sys.modules` for `hermes_plugins.hermes_sentinel[__home_*]`; masks source specs; serves frames and snapshots as raw JPEG or `?encoding=data_url` JSON. |
 | `desktop/plugin.js` | Desktop pane (SDK + React only): polling controller, source tiles, rules, Watch form, events, status chip. No websocket. |
+
+Import from a package root (`from .storage import Store`, `from .rules import RuleSpec`, `from .sources import open_source`); there are no compatibility shims at the old module paths.
+
+## Remaining refactor
+
+TODO (tracked by `python3 scripts/structure_lint.py --report`, printed non-failing by `scripts/check.sh`). These still violate the size, nesting or docstring limits and are to be split into packages in the same style as `sources/`, `storage/` and `rules/`:
+
+- **vision**: finish `vision/` (move flat `gate.py` and `judge.py` into `vision/gate/` and `vision/judge/`, leave no flat modules).
+- **alerts**: finish `alerts/` (the facade and its tests; `tests/alerts/` is still empty, `tests/test_alerts.py` is flat).
+- **engine**: `engine.py` (about 1200 lines, `Engine` about 940 lines) into `engine/` (capture workers, scheduler, judge pool, process lock, source health).
+- **agent layer**: `tools.py` (about 1000 lines, `SentinelTools` 500), `commands.py`, `setup_check.py`, `runtime.py`, `config.py`, `budget.py` and `dashboard/plugin_api.py` into an `agent/` package. This also resolves the `flat-package` finding on `sentinel/` and the logic in the plugin root `__init__.py`.
+- Docstrings for the public functions in `dashboard/plugin_api.py` and `budget.py`.
+- When `tools` and `setup_check` move, repoint the `list_sources` patches in `tests/test_setup_check.py` and `tests/test_tools.py` to the real module.
 
 ## Threading model
 
@@ -91,5 +104,7 @@ Messaging callers see and modify only rules whose origin matches their chat (ses
 Retention and the storage cap are enforced at start-up and at least hourly by a background prune, which is also kicked off when tools or commands first touch the store.
 
 ## Testing
+
+Tests mirror the package layout: `tests/sources/`, `tests/storage/`, `tests/rules/` (with `machine/`), `tests/vision/`. Shared fakes and helpers live in `tests/harness/` (`source_fakes.py`, `store_helpers.py`, ...); a package's fixtures live in its own `conftest.py`.
 
 `tests/harness/` contains `FakeCtx` (enforces the same checks as Hermes' plugin context, including injection permission), a scripted fake LLM that validates schemas, shims for `plugin_data_dir`, `plugin_db` and `get_secret`, and synthetic scenes. `Engine(threaded=False)` is driven step by step in tests.

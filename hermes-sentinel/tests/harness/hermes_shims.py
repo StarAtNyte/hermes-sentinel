@@ -41,8 +41,13 @@ __all__ = [
     "uninstall",
 ]
 
-SHIMMED_MODULES = ("agent", "agent.plugin_llm", "agent.secret_scope", "plugins",
-                   "plugins.plugin_storage")
+SHIMMED_MODULES = (
+    "agent",
+    "agent.plugin_llm",
+    "agent.secret_scope",
+    "plugins",
+    "plugins.plugin_storage",
+)
 
 # Same shape `plugins/plugin_storage.py` accepts (no separators or traversal).
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")

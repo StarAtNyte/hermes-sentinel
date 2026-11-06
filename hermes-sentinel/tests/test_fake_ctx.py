@@ -29,8 +29,14 @@ def test_ctx_has_no_storage_methods(fake_ctx: FakeCtx):
 
 
 HARNESS_ONLY = {
-    "call_in_loop", "call_tool", "close", "registered_capabilities", "run", "run_command",
-    "run_until_idle", "unload",
+    "call_in_loop",
+    "call_tool",
+    "close",
+    "registered_capabilities",
+    "run",
+    "run_command",
+    "run_until_idle",
+    "unload",
 }
 
 
@@ -207,8 +213,12 @@ def test_hold_stream_counts_only_on_transform_llm_output(fake_ctx: FakeCtx):
 def test_hook_vocabulary_comes_from_hermes_surface(fake_ctx: FakeCtx):
     assert fake_ctx.host.hooks == surface().hooks
     assert {"pre_tool_call", "on_session_start"} <= fake_ctx.host.hooks
-    assert fake_ctx.host.middleware == {"tool_request", "tool_execution", "llm_request",
-                                        "llm_execution"}
+    assert fake_ctx.host.middleware == {
+        "tool_request",
+        "tool_execution",
+        "llm_request",
+        "llm_execution",
+    }
 
 
 # ---------------------------------------------------------------- aux tasks / capabilities
@@ -224,15 +234,18 @@ def test_aux_task_key_validation(fake_ctx: FakeCtx, key, match):
 
 
 def test_aux_task_defaults_and_inherit(fake_ctx: FakeCtx):
-    fake_ctx.register_auxiliary_task("sentinel_vision", display_name="V", description="d",
-                                     defaults={"timeout": 30})
+    fake_ctx.register_auxiliary_task(
+        "sentinel_vision", display_name="V", description="d", defaults={"timeout": 30}
+    )
     assert fake_ctx.aux_tasks["sentinel_vision"]["defaults"]["timeout"] == 30
     assert fake_ctx.aux_tasks["sentinel_vision"]["defaults"]["provider"] == "auto"
-    fake_ctx.register_auxiliary_task("sentinel_b", display_name="B", description="d",
-                                     inherit_from="vision")
+    fake_ctx.register_auxiliary_task(
+        "sentinel_b", display_name="B", description="d", inherit_from="vision"
+    )
     assert fake_ctx.aux_tasks["sentinel_b"]["inherit_from"] == "vision"
-    fake_ctx.register_auxiliary_task("sentinel_c", display_name="C", description="d",
-                                     inherit_from="nope")
+    fake_ctx.register_auxiliary_task(
+        "sentinel_c", display_name="C", description="d", inherit_from="nope"
+    )
     assert fake_ctx.aux_tasks["sentinel_c"]["inherit_from"] is None
     assert "ignoring inherit_from" in fake_ctx.warnings[-1]
 

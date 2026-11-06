@@ -11,20 +11,27 @@ from harness.plugin_loader import plugin_module
 
 alerts = plugin_module("sentinel.alerts")
 rules = plugin_module("sentinel.rules")
-store_mod = plugin_module("sentinel.store")
+store_mod = plugin_module("sentinel.storage")
 
 
 def rule(**kw):
-    base = {"question": "Is the mug gone?", "source": "camera:0", "text": "mug taken",
-            "id": "r1"}
+    base = {"question": "Is the mug gone?", "source": "camera:0", "text": "mug taken", "id": "r1"}
     base.update(kw)
     return rules.RuleSpec(**base).validate()
 
 
 def event(**kw):
-    base = dict(id=7, rule_id="r1", ts="2026-11-06T14:03:11.000Z", caption="mug taken",
-                reason="the desk is empty", confidence=0.92, source="camera:0",
-                snapshot_path="/data/snap.jpg", feedback=None)
+    base = dict(
+        id=7,
+        rule_id="r1",
+        ts="2026-11-06T14:03:11.000Z",
+        caption="mug taken",
+        reason="the desk is empty",
+        confidence=0.92,
+        source="camera:0",
+        snapshot_path="/data/snap.jpg",
+        feedback=None,
+    )
     base.update(kw)
     return store_mod.EventRecord(**base)
 
@@ -41,8 +48,9 @@ def ctx():
 
 def test_session_key_route(ctx):
     a = alerts.Alerter(ctx)
-    d = a.alert_event(rule(origin={"session_key": "agent:main:telegram:dm:1"}), event(),
-                      source_name="camera:0")
+    d = a.alert_event(
+        rule(origin={"session_key": "agent:main:telegram:dm:1"}), event(), source_name="camera:0"
+    )
     assert d.ok and d.via == "session_key"
     msg = ctx.injected[-1]
     assert msg.session_key == "agent:main:telegram:dm:1" and msg.origin is None
@@ -50,8 +58,13 @@ def test_session_key_route(ctx):
 
 
 def test_origin_route_for_messaging_chats(ctx):
-    origin = {"platform": "telegram", "chat_id": "42", "user_id": "u1", "session_id": "s1",
-              "surface": "telegram"}
+    origin = {
+        "platform": "telegram",
+        "chat_id": "42",
+        "user_id": "u1",
+        "session_id": "s1",
+        "surface": "telegram",
+    }
     d = alerts.Alerter(ctx).alert_event(rule(origin=origin), event(), source_name="cam")
     assert d.via == "origin"
     assert ctx.injected[-1].origin == {"platform": "telegram", "chat_id": "42", "user_id": "u1"}
@@ -80,8 +93,9 @@ def test_no_post_fallback_from_background_threads(ctx):
 def test_post_fallback_never_for_chat_origins(ctx):
     ctx.inject_result = False
     origin = {"platform": "telegram", "chat_id": "42", "surface": "telegram"}
-    d = alerts.Alerter(ctx).alert_event(rule(origin=origin), event(), source_name="cam",
-                                        post_fallback=True)
+    d = alerts.Alerter(ctx).alert_event(
+        rule(origin=origin), event(), source_name="cam", post_fallback=True
+    )
     assert not d.ok and len(ctx.posted) == 0
 
 
@@ -132,8 +146,7 @@ def test_per_rule_min_interval_and_suppressed_count(ctx):
 def test_global_hourly_cap(ctx):
     clock = FakeClock()
     a = alerts.Alerter(ctx, clock=clock, per_rule_min_interval=0, global_per_hour=3)
-    results = [a.alert_event(rule(id=f"r{i}"), event(id=i), source_name="c").ok
-               for i in range(5)]
+    results = [a.alert_event(rule(id=f"r{i}"), event(id=i), source_name="c").ok for i in range(5)]
     assert results == [True, True, True, False, False]
     clock.advance(3600)
     assert a.alert_event(rule(id="r9"), event(id=9), source_name="c").ok
@@ -173,22 +186,25 @@ def test_message_contents():
 
 def test_message_without_media_and_with_action():
     r = rule(action="agent", action_prompt="turn on the porch light")
-    text = alerts.format_event_message(r, event(snapshot_path=None, confidence=None,
-                                                caption="", reason=""),
-                                       source_name="cam")
+    text = alerts.format_event_message(
+        r, event(snapshot_path=None, confidence=None, caption="", reason=""), source_name="cam"
+    )
     assert "MEDIA:" not in text and "confidence" not in text.splitlines()[0]
     assert "the watch condition was seen" in text
     lines = text.splitlines()
     assert "Then carry out the rule's action: turn on the porch light" in lines
     assert lines.index("Then carry out the rule's action: turn on the porch light") < lines.index(
-        "--- BEGIN UNTRUSTED OBSERVATION ---")
-    assert "MEDIA:" not in alerts.format_event_message(rule(), event(), source_name="c",
-                                                       include_media=False)
+        "--- BEGIN UNTRUSTED OBSERVATION ---"
+    )
+    assert "MEDIA:" not in alerts.format_event_message(
+        rule(), event(), source_name="c", include_media=False
+    )
 
 
 def test_message_is_bounded():
-    text = alerts.format_event_message(rule(text="x" * 2000), event(caption="y" * 5000),
-                                       source_name="c")
+    text = alerts.format_event_message(
+        rule(text="x" * 2000), event(caption="y" * 5000), source_name="c"
+    )
     assert len(text) <= alerts.MAX_MESSAGE_LEN
 
 
@@ -211,8 +227,9 @@ def test_bad_rule_object_still_alerts(ctx):
 
 def test_local_session_id_is_used_as_session_key(ctx):
     a = alerts.Alerter(ctx)
-    d = a.alert_event(rule(origin={"session_id": "ses_1", "surface": "tui"}), event(),
-                      source_name="c")
+    d = a.alert_event(
+        rule(origin={"session_id": "ses_1", "surface": "tui"}), event(), source_name="c"
+    )
     assert d.via == "session_id" and ctx.injected[-1].session_key == "ses_1"
 
 
@@ -247,11 +264,17 @@ def test_capture_origin_from_kwargs_and_surface():
 
 
 def test_capture_origin_uses_host_keywords_and_source():
-    src = SimpleNamespace(chat_id="c1", user_id="u1", thread_id=None,
-                          platform=SimpleNamespace(value="slack"))
+    src = SimpleNamespace(
+        chat_id="c1", user_id="u1", thread_id=None, platform=SimpleNamespace(value="slack")
+    )
     out = alerts.capture_origin({"session_key": "k1", "session_id": "s1", "source": src})
-    assert out == {"session_key": "k1", "session_id": "s1", "chat_id": "c1", "user_id": "u1",
-                   "platform": "slack"}
+    assert out == {
+        "session_key": "k1",
+        "session_id": "s1",
+        "chat_id": "c1",
+        "user_id": "u1",
+        "platform": "slack",
+    }
     out = alerts.capture_origin({"source": {"chat_id": "d1", "platform": "discord"}})
     assert out == {"chat_id": "d1", "platform": "discord"}
 
@@ -261,8 +284,9 @@ def test_capture_origin_is_safe_and_valid_for_rules():
         def session_surface(self):
             raise RuntimeError("x")
 
-    out = alerts.capture_origin({"session_id": "x" * 1000, "session_key": True,
-                                 "platform": ["x"]}, BadCtx())
+    out = alerts.capture_origin(
+        {"session_id": "x" * 1000, "session_key": True, "platform": ["x"]}, BadCtx()
+    )
     assert out == {}
     assert alerts.capture_origin(None) == {}
     rule(origin=alerts.capture_origin({"session_id": "s", "source": object()}))
@@ -273,8 +297,12 @@ def test_route_book_remembers_and_persists(tmp_path):
     book = alerts.RouteBook(path, limit=2)
     tg = SimpleNamespace(platform="telegram", chat_id="42", user_id="u")
     route = book.remember({"session_id": "s1", "session_key": "agent:tg:42", "source": tg})
-    assert route == {"session_key": "agent:tg:42", "platform": "telegram", "chat_id": "42",
-                     "user_id": "u"}
+    assert route == {
+        "session_key": "agent:tg:42",
+        "platform": "telegram",
+        "chat_id": "42",
+        "user_id": "u",
+    }
     assert book.lookup("s1") == route and book.lookup("nope") == {} and book.lookup(None) == {}
     assert book.remember({"session_id": "s0"}) == {}  # nothing routable: not stored
     book.remember({"session_key": "ses_local"})  # local: key doubles as the session id

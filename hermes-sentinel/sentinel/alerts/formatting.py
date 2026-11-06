@@ -62,7 +62,7 @@ def _instructions(rule: Any, event: Any, has_media: bool) -> list[str]:
     lines = [
         "Tell the user about this now"
         + (", attaching the photo" if has_media else "")
-        + f'. If they say it is wrong, call sentinel_feedback with event_id={event.id} and '
+        + f". If they say it is wrong, call sentinel_feedback with event_id={event.id} and "
         'verdict "false_alarm" (or "correct").'
     ]
     if getattr(rule, "action", "notify") == "agent" and getattr(rule, "action_prompt", ""):

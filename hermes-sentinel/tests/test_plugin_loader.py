@@ -37,8 +37,9 @@ def test_harness_and_plugin_share_exception_classes():
     assert fake_sources.SourceError is sources.SourceError
     assert fake_sources.SourceDisconnected is sources.SourceDisconnected
     src = fake_sources.FakeSource(
-        fake_sources.Scene(name="x", seed=0, fps=1.0, frames=[], labels=[],
-                           should_trigger=False, description="")
+        fake_sources.Scene(
+            name="x", seed=0, fps=1.0, frames=[], labels=[], should_trigger=False, description=""
+        )
     )
     with pytest.raises(sources.SourceError):  # the plugin's own class catches the harness error
         src.read()

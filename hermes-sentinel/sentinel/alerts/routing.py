@@ -11,8 +11,7 @@ if TYPE_CHECKING:
 #: Session surfaces that are not a messaging chat (an ``origin`` route makes no sense there).
 LOCAL_SURFACES = frozenset({"", "cli", "tui", "desktop", "local", "acp", "api_server", "gateway"})
 #: Origin keys forwarded to ``inject_message(origin=...)`` (``SessionSource.to_dict`` shape).
-ROUTE_KEYS = ("platform", "chat_id", "chat_type", "chat_name", "thread_id", "user_id",
-              "user_name")
+ROUTE_KEYS = ("platform", "chat_id", "chat_type", "chat_name", "thread_id", "user_id", "user_name")
 MAX_ORIGIN_VALUE = 500
 
 
@@ -103,7 +102,8 @@ def same_chat(rule_origin: Mapping[str, Any] | None, caller: Mapping[str, Any] |
     platform = (clean_value(rule_origin.get("platform")) or "").lower()
     chat = clean_value(rule_origin.get("chat_id"))
     return bool(
-        platform and chat
+        platform
+        and chat
         and platform == (clean_value(caller.get("platform")) or "").lower()
         and chat == clean_value(caller.get("chat_id"))
     )

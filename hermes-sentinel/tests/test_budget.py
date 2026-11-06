@@ -8,7 +8,7 @@ import pytest
 from harness.plugin_loader import plugin_module
 
 budget_mod = plugin_module("sentinel.budget")
-store_mod = plugin_module("sentinel.store")
+store_mod = plugin_module("sentinel.storage")
 Budget = budget_mod.Budget
 
 T0 = 1_762_430_400.0  # top of an hour (12:00:00Z)
@@ -129,12 +129,16 @@ def test_status_dict_and_describe(store, clock):
     b.try_consume(2)
     d = b.status().to_dict()
     assert d == {
-        "hour_used": 2, "hour_cap": None, "day_used": 2, "day_cap": 10, "exhausted": False,
-        "retry_after_seconds": 0.0, "hour_remaining": None, "day_remaining": 8,
+        "hour_used": 2,
+        "hour_cap": None,
+        "day_used": 2,
+        "day_cap": 10,
+        "exhausted": False,
+        "retry_after_seconds": 0.0,
+        "hour_remaining": None,
+        "day_remaining": 8,
     }
-    assert b.status().describe() == (
-        "Vision checks: 2/unlimited this hour, 2/10 in the last 24 h."
-    )
+    assert b.status().describe() == ("Vision checks: 2/unlimited this hour, 2/10 in the last 24 h.")
 
 
 def test_counts_per_rule_but_caps_global(store, clock):
@@ -185,9 +189,22 @@ def test_concurrent_consumers(store, clock):
 @pytest.mark.parametrize(
     "value, expected",
     [
-        (None, 60), (30, 30), (30.9, 30), ("45", 45), (" 12 ", 12), ("unlimited", None),
-        ("off", None), ("none", None), ("abc", 60), (-1, 60), (float("nan"), 60),
-        (float("inf"), 60), (True, 60), ([], 60), (0, 0), (10**9, budget_mod.MAX_CAP),
+        (None, 60),
+        (30, 30),
+        (30.9, 30),
+        ("45", 45),
+        (" 12 ", 12),
+        ("unlimited", None),
+        ("off", None),
+        ("none", None),
+        ("abc", 60),
+        (-1, 60),
+        (float("nan"), 60),
+        (float("inf"), 60),
+        (True, 60),
+        ([], 60),
+        (0, 0),
+        (10**9, budget_mod.MAX_CAP),
     ],
 )
 def test_parse_cap(value, expected):

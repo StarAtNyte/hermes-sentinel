@@ -402,8 +402,9 @@ def test_combined_scenes_label_only_the_real_event(name, key, appears):
     for i, label in enumerate(scene.labels):
         assert (label.present is not None) == ((i >= at) == appears)
     # The nuisance is active on frames without an event too.
-    quiet = [_mean_abs_diff(a, b) for a, b in zip(scene.frames[1:at], scene.frames[2:at],
-                                                   strict=False)]
+    quiet = [
+        _mean_abs_diff(a, b) for a, b in zip(scene.frames[1:at], scene.frames[2:at], strict=False)
+    ]
     assert max(quiet) > 4.0
 
 

@@ -59,7 +59,7 @@ def test_object_removed_fires_exactly_one_alert_with_media(fake_ctx):
     assert "a hand picked up the red mug" in text and "confidence 0.92" in text
     media = [line for line in text.splitlines() if line.startswith("MEDIA:")]
     assert len(media) == 1
-    path = Path(media[0][len("MEDIA:"):])
+    path = Path(media[0][len("MEDIA:") :])
     assert path.is_file() and path.read_bytes()[:3] == b"\xff\xd8\xff"
     assert "sentinel_feedback" in text and "Event #1" in text
     # Gate before judge: the first-frame tick, the onset and one confirmation, nothing else.
@@ -87,8 +87,12 @@ def test_false_alarm_feedback_adds_negative_example_and_tightens(fake_ctx):
 
     # The next vision call carries the negative example as a labelled reference image.
     fake_ctx.llm.calls.clear()
-    out = rig.call("sentinel_update", rule_id=rule_id, action="edit",
-                   changes={"question": "Is the red mug gone?"})
+    out = rig.call(
+        "sentinel_update",
+        rule_id=rule_id,
+        action="edit",
+        changes={"question": "Is the red mug gone?"},
+    )
     assert out["ok"]
     result = rig.engine.test_rule(rule_id)
     assert result["ok"]
@@ -113,8 +117,7 @@ def test_events_query_returns_the_event(fake_ctx):
 
 def test_budget_exhaustion_pauses_judging_with_one_notice(fake_ctx):
     rig = Rig(fake_ctx, config={"vision_calls_per_hour": 2, "idle_check_seconds": 1})
-    rig.sources[CAM] = FakeSource(build_scene("static_scene", n_frames=30), rig.clock,
-                                  loop=True)
+    rig.sources[CAM] = FakeSource(build_scene("static_scene", n_frames=30), rig.clock, loop=True)
     fake_ctx.llm.respond(lambda call: verdict(False, 0.9), task="sentinel_vision")
     rig.watch(recipe="print-failure", source=CAM)  # condition rule: idle ticks apply
     rig.pump(120)  # 12 virtual seconds: ~12 idle ticks, only 2 may reach the model

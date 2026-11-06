@@ -172,9 +172,7 @@ class SentinelConfig:
         if source is None:
             default_source = DEFAULT_SOURCE
         elif (
-            isinstance(source, (str, int))
-            and not isinstance(source, bool)
-            and str(source).strip()
+            isinstance(source, (str, int)) and not isinstance(source, bool) and str(source).strip()
         ):
             default_source = str(source).strip()
         else:

@@ -28,21 +28,24 @@ from .alerts import (
     same_chat,
 )
 from .config import SentinelConfig
-from .judge import encode_jpeg
-from .recipes import RECIPES, build_rule, get_recipe, recipe_names
 from .rules import (
     ACTION_AGENT,
     ACTION_NOTIFY,
     MODES,
+    RECIPES,
     RuleSpec,
     RuleValidationError,
     Schedule,
+    build_rule,
     compile_rule,
+    get_recipe,
+    recipe_names,
 )
 from .runtime import Sentinel
 from .setup_check import SetupEnv, fail_titles, format_report, run_checks, summarize
 from .sources import SourceError, SourceSpec, SourceSpecError, list_sources
-from .store import EventRecord, StoreError
+from .storage import EventRecord, StoreError
+from .vision import encode_jpeg
 
 logger = logging.getLogger(__name__)
 
@@ -60,19 +63,41 @@ COMPILE_CALLS_PER_HOUR = 10
 FALSE_ALARM_STEP = 0.05
 MAX_TUNED_THRESHOLD = 0.95
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".bmp", ".webp"})
-_REL_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|"
-                     r"week|weeks)\s*(?:ago)?\s*$", re.IGNORECASE)
-_REL_UNITS = {"s": 1, "sec": 1, "secs": 1, "m": 60, "min": 60, "mins": 60, "h": 3600,
-              "hr": 3600, "hrs": 3600, "d": 86400, "day": 86400, "days": 86400,
-              "w": 604800, "wk": 604800, "week": 604800, "weeks": 604800}
+_REL_RE = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|"
+    r"week|weeks)\s*(?:ago)?\s*$",
+    re.IGNORECASE,
+)
+_REL_UNITS = {
+    "s": 1,
+    "sec": 1,
+    "secs": 1,
+    "m": 60,
+    "min": 60,
+    "mins": 60,
+    "h": 3600,
+    "hr": 3600,
+    "hrs": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+    "w": 604800,
+    "wk": 604800,
+    "week": 604800,
+    "weeks": 604800,
+}
 
 # --------------------------------------------------------------------------- schemas
 
 
-def _schema(name: str, description: str, properties: dict[str, Any],
-            required: list[str] | None = None) -> dict[str, Any]:
-    params: dict[str, Any] = {"type": "object", "properties": properties,
-                              "additionalProperties": False}
+def _schema(
+    name: str, description: str, properties: dict[str, Any], required: list[str] | None = None
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": False,
+    }
     if required:
         params["required"] = required
     return {"name": name, "description": description, "parameters": params}
@@ -99,8 +124,11 @@ _SCHEDULE_PROP = {
     "properties": {
         "start": {"type": "string", "description": "HH:MM, e.g. 22:00"},
         "end": {"type": "string", "description": "HH:MM, e.g. 06:00 (may cross midnight)"},
-        "days": {"type": "array", "items": {"type": ["integer", "string"]},
-                 "description": "Weekdays: 0=Mon..6=Sun or names like 'mon'."},
+        "days": {
+            "type": "array",
+            "items": {"type": ["integer", "string"]},
+            "description": "Weekdays: 0=Mon..6=Sun or names like 'mon'.",
+        },
     },
     "additionalProperties": False,
 }
@@ -121,17 +149,28 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         {
             "what": {"type": "string", "description": "What to watch for, in plain English."},
             "source": _SOURCE_PROP,
-            "recipe": {"type": "string", "enum": sorted(RECIPES),
-                       "description": "Use a bundled, tuned rule instead of compiling 'what'."},
+            "recipe": {
+                "type": "string",
+                "enum": sorted(RECIPES),
+                "description": "Use a bundled, tuned rule instead of compiling 'what'.",
+            },
             "roi": _ROI_PROP,
-            "hold_seconds": {"type": "number", "minimum": 0,
-                             "description": "Require the condition to hold this long first."},
-            "cooldown_seconds": {"type": "number", "minimum": 0,
-                                 "description": "Quiet time after an alert (default 300)."},
+            "hold_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Require the condition to hold this long first.",
+            },
+            "cooldown_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Quiet time after an alert (default 300).",
+            },
             "schedule": _SCHEDULE_PROP,
-            "action_prompt": {"type": "string",
-                              "description": "Optional instruction for you (the agent) to carry "
-                              "out when it fires, e.g. 'turn on the porch light'."},
+            "action_prompt": {
+                "type": "string",
+                "description": "Optional instruction for you (the agent) to carry "
+                "out when it fires, e.g. 'turn on the porch light'.",
+            },
         },
     ),
     "sentinel_rules": _schema(
@@ -157,14 +196,18 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                     "confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1},
                     "roi": {**_ROI_PROP, "type": ["array", "null"]},
                     "source": {"type": "string"},
-                    "action_prompt": {"type": "string",
-                                      "description": "Empty string = just notify."},
+                    "action_prompt": {
+                        "type": "string",
+                        "description": "Empty string = just notify.",
+                    },
                     "schedule": {**_SCHEDULE_PROP, "type": ["object", "null"]},
                 },
                 "additionalProperties": False,
             },
-            "purge_events": {"type": "boolean",
-                             "description": "With delete: also delete its events and photos."},
+            "purge_events": {
+                "type": "boolean",
+                "description": "With delete: also delete its events and photos.",
+            },
         },
         ["rule_id", "action"],
     ),
@@ -172,8 +215,10 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "sentinel_look",
         "Grab a frame from a camera or the screen right now and describe it, or answer a "
         "question about it. Returns a MEDIA: path to the photo. Uses one vision check.",
-        {"source": _SOURCE_PROP,
-         "question": {"type": "string", "description": "Optional question about the frame."}},
+        {
+            "source": _SOURCE_PROP,
+            "question": {"type": "string", "description": "Optional question about the frame."},
+        },
     ),
     "sentinel_events": _schema(
         "sentinel_events",
@@ -182,12 +227,18 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         {
             "text": {"type": "string", "description": "Words to search captions for."},
             "rule_id": {"type": "string"},
-            "since": {"type": "string",
-                      "description": "ISO-8601 time, 'today', 'yesterday', or '2h' / '3d' ago."},
+            "since": {
+                "type": "string",
+                "description": "ISO-8601 time, 'today', 'yesterday', or '2h' / '3d' ago.",
+            },
             "until": {"type": "string", "description": "Same formats as since (exclusive)."},
             "feedback": {"type": "string", "enum": ["correct", "false_alarm"]},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 100,
-                      "description": "Max events (default 20)."},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "description": "Max events (default 20).",
+            },
         },
     ),
     "sentinel_feedback": _schema(
@@ -210,8 +261,10 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             "kind": {"type": "string", "enum": ["yes", "no"]},
             "image_path": {"type": "string", "description": "Path to a JPEG/PNG image file."},
             "event_id": {"type": "integer", "description": "Use this event's photo."},
-            "from_source": {"type": "boolean",
-                            "description": "Use the rule's source's current frame."},
+            "from_source": {
+                "type": "boolean",
+                "description": "Use the rule's source's current frame.",
+            },
             "note": {"type": "string"},
         },
         ["rule_id", "kind"],
@@ -254,8 +307,9 @@ def _err(message: str, **data: Any) -> str:
     return json.dumps({"ok": False, "error": message, **data}, default=str, ensure_ascii=False)
 
 
-def _str_arg(args: Mapping[str, Any], key: str, *, required: bool = False,
-             limit: int = MAX_TEXT) -> str:
+def _str_arg(
+    args: Mapping[str, Any], key: str, *, required: bool = False, limit: int = MAX_TEXT
+) -> str:
     value = args.get(key)
     if value is None or (isinstance(value, str) and not value.strip()):
         if required:
@@ -354,8 +408,10 @@ def _parse_roi(value: Any) -> tuple[float, float, float, float] | None:
     except (TypeError, ValueError):
         raise ToolError("roi values must be numbers") from None
     x, y, w, h = roi
-    if not (0 <= x < 1 and 0 <= y < 1 and 0 < w <= 1 and 0 < h <= 1) or x + w > 1.0001 or (
-        y + h > 1.0001
+    if (
+        not (0 <= x < 1 and 0 <= y < 1 and 0 < w <= 1 and 0 < h <= 1)
+        or x + w > 1.0001
+        or (y + h > 1.0001)
     ):
         raise ToolError("roi must be fractions inside the frame, e.g. [0.25, 0.25, 0.5, 0.5]")
     return roi  # type: ignore[return-value]
@@ -494,8 +550,10 @@ class SentinelTools:
             except ToolError as exc:
                 return _err(str(exc))
             except SourceSpecError as exc:
-                return _err(f"invalid source: {exc}. Examples: camera:0, screen, rtsp://..., "
-                            "folder:/path. Use sentinel_sources to list what is available.")
+                return _err(
+                    f"invalid source: {exc}. Examples: camera:0, screen, rtsp://..., "
+                    "folder:/path. Use sentinel_sources to list what is available."
+                )
             except SourceError as exc:
                 return _err(f"could not read the source: {exc}")
             except RuleValidationError as exc:
@@ -544,8 +602,7 @@ class SentinelTools:
 
     def sentinel_sources(self, args: dict, **_: Any) -> str:
         probe = args.get("probe_cameras", True)
-        infos = list_sources(named_streams=self.s.config.stream_urls,
-                             probe_cameras=bool(probe))
+        infos = list_sources(named_streams=self.s.config.stream_urls, probe_cameras=bool(probe))
         sources = [i.to_dict() for i in infos]
         return _ok(
             sources=sources,
@@ -556,8 +613,9 @@ class SentinelTools:
 
     def sentinel_setup_check(self, args: dict, **kwargs: Any) -> str:
         checks = run_checks(SetupEnv.from_sentinel(self.s, kwargs))
-        return _ok(checks=[c.to_dict() for c in checks], report=format_report(checks),
-                   **summarize(checks))
+        return _ok(
+            checks=[c.to_dict() for c in checks], report=format_report(checks), **summarize(checks)
+        )
 
     def _setup_hint(self) -> str:
         """Point at ``/sentinel setup`` while a fail-level check exists (cheap checks only)."""
@@ -568,8 +626,10 @@ class SentinelTools:
             return ""
         if not failing:
             return ""
-        return (f" Setup problem ({', '.join(failing)}): run /sentinel setup "
-                "(or the sentinel_setup_check tool) for the fix.")
+        return (
+            f" Setup problem ({', '.join(failing)}): run /sentinel setup "
+            "(or the sentinel_setup_check tool) for the fix."
+        )
 
     def sentinel_watch(self, args: dict, **kwargs: Any) -> str:
         cfg = self.s.config
@@ -585,10 +645,18 @@ class SentinelTools:
         if recipe_name:
             recipe = get_recipe(recipe_name)
             if recipe is None:
-                raise ToolError(f"unknown recipe {recipe_name!r}; choose one of "
-                                + ", ".join(recipe_names()))
-            spec = build_rule(recipe, source, text=what, defaults=cfg.rule_defaults(),
-                              origin=origin, roi=roi, action_prompt=action_prompt)
+                raise ToolError(
+                    f"unknown recipe {recipe_name!r}; choose one of " + ", ".join(recipe_names())
+                )
+            spec = build_rule(
+                recipe,
+                source,
+                text=what,
+                defaults=cfg.rule_defaults(),
+                origin=origin,
+                roi=roi,
+                action_prompt=action_prompt,
+            )
         else:
             if not what:
                 raise ToolError("say what to watch for in 'what' (or pick a 'recipe')")
@@ -597,8 +665,13 @@ class SentinelTools:
                     f"rule compiling is limited to {self._compile_cap.cap} per hour; use a "
                     "recipe or try again later"
                 )
-            spec = compile_rule(what, source, getattr(self.s.ctx, "llm", None),
-                                defaults=cfg.rule_defaults(), origin=origin)
+            spec = compile_rule(
+                what,
+                source,
+                getattr(self.s.ctx, "llm", None),
+                defaults=cfg.rule_defaults(),
+                origin=origin,
+            )
             changes: dict[str, Any] = {}
             if roi is not None:
                 changes["roi"] = roi
@@ -622,8 +695,7 @@ class SentinelTools:
         saved = self._save_and_apply(spec)
         engine = self.s.engine
         hold_text = (
-            f" once it has held for {saved.hold_seconds:g}s" if saved.effective_hold_seconds
-            else ""
+            f" once it has held for {saved.hold_seconds:g}s" if saved.effective_hold_seconds else ""
         )
         message = (
             f'Watching "{saved.source}" for: "{saved.question}"{hold_text}. Checks only when '
@@ -652,8 +724,10 @@ class SentinelTools:
             if len(self._asked_here) > 1024:
                 self._asked_here.clear()
         where = "this chat" if is_chat_origin(origin) else "this session"
-        return (f" To make sure alerts come back to {where}, ask the user to send "
-                "'/sentinel here' once.")
+        return (
+            f" To make sure alerts come back to {where}, ask the user to send "
+            "'/sentinel here' once."
+        )
 
     @staticmethod
     def status_text(spec: RuleSpec, engine: Any, status: Mapping[str, Any] | None) -> str:
@@ -670,8 +744,11 @@ class SentinelTools:
         rule_id = _str_arg(args, "rule_id", limit=64)
         store = self.s.store
         caller = self._caller(kwargs)
-        specs = ([self._rule(rule_id, caller)] if rule_id else
-                 [r for r in store.list_rules() if same_chat(r.origin, caller)])
+        specs = (
+            [self._rule(rule_id, caller)]
+            if rule_id
+            else [r for r in store.list_rules() if same_chat(r.origin, caller)]
+        )
         engine = self.s.engine_if_built
         out = []
         for spec in specs:
@@ -711,15 +788,26 @@ class SentinelTools:
             purge = bool(args.get("purge_events", False))
             engine.remove_rule(rule_id)
             self.s.store.delete_rule(rule_id, purge_events=purge)
-            return _ok(message=f"Deleted rule {rule_id}" + (" and its events." if purge else
-                                                            "; its events are kept."))
+            return _ok(
+                message=f"Deleted rule {rule_id}"
+                + (" and its events." if purge else "; its events are kept.")
+            )
         if action != "edit":
             raise ToolError("action must be pause, resume, delete or edit")
         raw = args.get("changes")
         if not isinstance(raw, Mapping) or not raw:
             raise ToolError("action=edit needs a non-empty 'changes' object")
-        allowed = {"question", "mode", "hold_seconds", "cooldown_seconds",
-                   "confidence_threshold", "roi", "source", "action_prompt", "schedule"}
+        allowed = {
+            "question",
+            "mode",
+            "hold_seconds",
+            "cooldown_seconds",
+            "confidence_threshold",
+            "roi",
+            "source",
+            "action_prompt",
+            "schedule",
+        }
         unknown = sorted(set(raw) - allowed)
         if unknown:
             raise ToolError(f"cannot change {unknown}; allowed: {sorted(allowed)}")
@@ -782,19 +870,23 @@ class SentinelTools:
         if rule_id and scoped:
             self._rule(rule_id, caller)  # not this chat's rule: "no rule"
         events = store.query_events(
-            text=text or None, rule_id=rule_id,
+            text=text or None,
+            rule_id=rule_id,
             since=since.astimezone(UTC) if since else None,
             until=until.astimezone(UTC) if until else None,
-            feedback=feedback, limit=limit,
+            feedback=feedback,
+            limit=limit,
         )
         rules = {s.id: s for s in store.list_rules()}
         if scoped:  # messaging chats only see events of their own rules
-            events = [e for e in events if e.rule_id in rules
-                      and same_chat(rules[e.rule_id].origin, caller)]
+            events = [
+                e
+                for e in events
+                if e.rule_id in rules and same_chat(rules[e.rule_id].origin, caller)
+            ]
         items = [_event_dict(e, rules.get(e.rule_id)) for e in events]
         summary = "; ".join(f"{i['time'][11:16]} {i['caption']}" for i in items[:10])
-        return _ok(count=len(items), events=items,
-                   summary=summary or "No matching events.")
+        return _ok(count=len(items), events=items, summary=summary or "No matching events.")
 
     def sentinel_feedback(self, args: dict, **kwargs: Any) -> str:
         event_id = _int_arg(args, "event_id", required=True)
@@ -816,7 +908,9 @@ class SentinelTools:
         if event.feedback == verdict:  # idempotent: no second example, no second nudge
             current = store.get_rule(event.rule_id)
             return _ok(
-                event_id=event.id, feedback=verdict, already_recorded=True,
+                event_id=event.id,
+                feedback=verdict,
+                already_recorded=True,
                 rule_id=event.rule_id,
                 **({"confidence_threshold": current.confidence_threshold} if current else {}),
                 message=f"Event #{event.id} was already marked as {verdict.replace('_', ' ')}; "
@@ -835,14 +929,17 @@ class SentinelTools:
             except (StoreError, ValueError, OSError) as exc:
                 result["example_error"] = str(exc)[:200]
         if verdict == "false_alarm":
-            new_threshold = min(MAX_TUNED_THRESHOLD,
-                                round(spec.confidence_threshold + FALSE_ALARM_STEP, 3))
+            new_threshold = min(
+                MAX_TUNED_THRESHOLD, round(spec.confidence_threshold + FALSE_ALARM_STEP, 3)
+            )
             if new_threshold > spec.confidence_threshold:
                 spec = self._save_and_apply(spec.with_changes(confidence_threshold=new_threshold))
             result["confidence_threshold"] = spec.confidence_threshold
-            message = (f"Marked event #{event.id} as a false alarm. Saved it as a 'no' example "
-                       f"and raised the rule's confidence threshold to "
-                       f"{spec.confidence_threshold:.2f}.")
+            message = (
+                f"Marked event #{event.id} as a false alarm. Saved it as a 'no' example "
+                f"and raised the rule's confidence threshold to "
+                f"{spec.confidence_threshold:.2f}."
+            )
         else:
             message = f"Marked event #{event.id} as correct and saved it as a 'yes' example."
         return _ok(**result, rule_id=spec.id, message=message)
@@ -863,8 +960,14 @@ class SentinelTools:
     def sentinel_teach(self, args: dict, **kwargs: Any) -> str:
         rule_id = _str_arg(args, "rule_id", required=True, limit=64)
         raw_kind = _str_arg(args, "kind", required=True, limit=16).lower()
-        kinds = {"yes": "pos", "pos": "pos", "positive": "pos", "no": "neg", "neg": "neg",
-                 "negative": "neg"}
+        kinds = {
+            "yes": "pos",
+            "pos": "pos",
+            "positive": "pos",
+            "no": "neg",
+            "neg": "neg",
+            "negative": "neg",
+        }
         if raw_kind not in kinds:
             raise ToolError("kind must be 'yes' (should trigger) or 'no' (should not)")
         kind = kinds[raw_kind]
@@ -881,8 +984,9 @@ class SentinelTools:
             event = store.get_event(event_id)
             caller = self._caller(kwargs)
             owner = store.get_rule(event.rule_id) if event is not None else None
-            if event is None or (is_chat_origin(caller) and (
-                    owner is None or not same_chat(owner.origin, caller))):
+            if event is None or (
+                is_chat_origin(caller) and (owner is None or not same_chat(owner.origin, caller))
+            ):
                 raise ToolError(f"no event #{event_id}")
             example = self._example_from_event(spec.id, kind, event, note)
         elif from_source:
@@ -907,7 +1011,9 @@ class SentinelTools:
         counts = {k: len(store.list_examples(spec.id, k)) for k in ("pos", "neg")}
         word = "yes" if kind == "pos" else "no"
         return _ok(
-            example_id=example.id, rule_id=spec.id, kind=word,
+            example_id=example.id,
+            rule_id=spec.id,
+            kind=word,
             examples={"yes": counts["pos"], "no": counts["neg"]},
             message=f"Added a '{word}' example to rule {spec.id}. The two newest of each kind "
             "are shown to the vision model with every check.",

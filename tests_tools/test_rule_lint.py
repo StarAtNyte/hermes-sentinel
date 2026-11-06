@@ -480,15 +480,19 @@ def test_alias_good_samples(tmp_path: Path, source: str) -> None:
 # ---- test-code exemption is limited to the top-level tests dir --------------------
 
 RUNTIME_ONLY = (
-    "import sys, types\n"
-    "sys.modules['hermes_plugins'] = types.ModuleType('hermes_plugins')\n"
+    "import sys, types\nsys.modules['hermes_plugins'] = types.ModuleType('hermes_plugins')\n"
 )
 
 
 @pytest.mark.parametrize(
     "name",
-    ["sentinel/tests/helpers.py", "sentinel/test_utils.py", "sentinel/conftest.py",
-     "pkg/tests/conftest.py", "test_root.py"],
+    [
+        "sentinel/tests/helpers.py",
+        "sentinel/test_utils.py",
+        "sentinel/conftest.py",
+        "pkg/tests/conftest.py",
+        "test_root.py",
+    ],
 )
 def test_nested_tests_dirs_are_not_exempt(tmp_path: Path, name: str) -> None:
     assert 9 in _rules(_lint(tmp_path, name, RUNTIME_ONLY))

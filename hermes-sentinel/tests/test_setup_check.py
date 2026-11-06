@@ -70,8 +70,17 @@ def run(tmp_path, **over):
 def test_healthy_setup_has_only_unverifiable_warnings(tmp_path):
     checks = sc.run_checks(make_env(tmp_path))
     assert [c.id for c in checks] == [
-        "deps", "injection", "vision", "sources", "default_source", "engine", "storage",
-        "delivery", "budget", "rules"]
+        "deps",
+        "injection",
+        "vision",
+        "sources",
+        "default_source",
+        "engine",
+        "storage",
+        "delivery",
+        "budget",
+        "rules",
+    ]
     assert {c.id for c in checks if c.status != "ok"} == {"injection", "vision"}
     assert sc.summarize(checks)["ready"] is True
     assert sc.format_report(checks).splitlines()[-1] == "Ready: yes - 2 things to fix"
@@ -112,17 +121,20 @@ def test_no_camera_found(tmp_path):
 def test_sources_found_configured_and_not_probed(tmp_path):
     found = run(tmp_path)["sources"]
     assert found.status == "ok" and "camera:0" in found.detail and "screen:1" in found.detail
-    stream = run(tmp_path, list_sources=lambda **kw: [
-        info("porch", "stream", None, "porch")])["sources"]
+    stream = run(tmp_path, list_sources=lambda **kw: [info("porch", "stream", None, "porch")])[
+        "sources"
+    ]
     assert stream.status == "ok" and "porch (stream)" in stream.detail
 
     def boom(**kw):
         raise AssertionError("must not probe")
+
     skipped = run(tmp_path, probe_sources=False, list_sources=boom)["sources"]
     assert skipped.status == "ok" and "not probed" in skipped.detail
 
     def crash(**kw):
         raise RuntimeError("driver")
+
     crashed = run(tmp_path, list_sources=crash)["sources"]
     assert crashed.status == "warn" and "RuntimeError" in crashed.detail
 
@@ -133,13 +145,20 @@ def test_probe_uses_short_timeouts(tmp_path):
     def probe(**kw):
         seen.update(kw)
         return []
+
     run(tmp_path, list_sources=probe)
     assert seen["total_timeout"] <= 5 and seen["per_camera_timeout"] <= 2
 
 
-@pytest.mark.parametrize("source, status", [
-    ("camera:0", "ok"), ("screen", "ok"), ("rtsp://user:pw@h/x", "fail"), ("nonsense://x", "fail"),
-])
+@pytest.mark.parametrize(
+    "source, status",
+    [
+        ("camera:0", "ok"),
+        ("screen", "ok"),
+        ("rtsp://user:pw@h/x", "fail"),
+        ("nonsense://x", "fail"),
+    ],
+)
 def test_default_source_validity(tmp_path, source, status):
     cfg = cfg_mod.SentinelConfig(default_source=source)
     c = run(tmp_path, config=cfg, list_sources=lambda **kw: [])["default_source"]
@@ -162,8 +181,10 @@ def test_config_problems_listed_only_when_present(tmp_path):
 
 def test_engine_states(tmp_path):
     assert run(tmp_path, engine=SimpleNamespace(running=True))["engine"].detail == "Running."
-    assert "Standing by" in run(
-        tmp_path, engine=SimpleNamespace(running=False, standing_by=True))["engine"].detail
+    assert (
+        "Standing by"
+        in run(tmp_path, engine=SimpleNamespace(running=False, standing_by=True))["engine"].detail
+    )
     assert "Not started" in run(tmp_path)["engine"].detail
 
 
@@ -180,10 +201,12 @@ def test_storage_writable_low_and_unwritable(tmp_path):
 
     def nostore():
         raise OSError("no db")
+
     assert run(tmp_path, store_getter=nostore)["storage"].status == "fail"
 
     def nodisk(path):
         raise OSError("x")
+
     assert run(tmp_path, disk_free_mb=nodisk)["storage"].status == "ok"
 
 
@@ -198,6 +221,7 @@ def test_delivery_route(tmp_path):
 def test_budget_caps(tmp_path):
     def with_caps(**kw):
         return run(tmp_path, config=cfg_mod.SentinelConfig(**kw))["budget"]
+
     assert with_caps().status == "ok"
     assert with_caps(vision_calls_per_hour=0).status == "fail"
     assert with_caps(vision_calls_per_hour=None).status == "warn"
@@ -208,8 +232,11 @@ def test_budget_caps(tmp_path):
 def test_rules_count_and_offline_source(tmp_path):
     assert "No rules yet" in run(tmp_path)["rules"].detail
     rules = [SimpleNamespace(id="r1", enabled=True), SimpleNamespace(id="r2", enabled=False)]
-    engine = SimpleNamespace(running=True, standing_by=False, status=lambda: {"sources": [
-        {"source": "camera:3", "online": False, "rules": ["r1"]}]})
+    engine = SimpleNamespace(
+        running=True,
+        standing_by=False,
+        status=lambda: {"sources": [{"source": "camera:3", "online": False, "rules": ["r1"]}]},
+    )
     c = run(tmp_path, store_getter=lambda: FakeStore(tmp_path, rules), engine=engine)["rules"]
     assert c.status == "warn" and "2 rule(s), 1 active" in c.detail
     assert "r1 (camera:3)" in c.detail
@@ -221,15 +248,20 @@ def test_rules_count_and_offline_source(tmp_path):
 def test_a_crashing_check_is_contained(tmp_path):
     def boom():
         raise RuntimeError("x")
+
     checks = {c.id: c for c in sc.run_checks(make_env(tmp_path, store_getter=boom))}
     assert checks["rules"].status == "warn" and "RuntimeError" in checks["rules"].detail
     assert checks["storage"].status == "fail"
 
 
 def test_summary_and_titles(tmp_path):
-    checks = sc.run_checks(make_env(
-        tmp_path, module_available=lambda m: False,
-        config=cfg_mod.SentinelConfig(vision_calls_per_hour=0)))
+    checks = sc.run_checks(
+        make_env(
+            tmp_path,
+            module_available=lambda m: False,
+            config=cfg_mod.SentinelConfig(vision_calls_per_hour=0),
+        )
+    )
     assert sc.fail_titles(checks) == ["Python packages", "Vision call caps"]
     s = sc.summarize(checks)
     assert s["ready"] is False and s["failed"] == 2

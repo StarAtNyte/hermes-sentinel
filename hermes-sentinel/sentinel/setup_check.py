@@ -63,8 +63,13 @@ class Check:
     fix: str = ""
 
     def to_dict(self) -> dict[str, str]:
-        return {"id": self.id, "title": self.title, "status": self.status,
-                "detail": self.detail, "fix": self.fix}
+        return {
+            "id": self.id,
+            "title": self.title,
+            "status": self.status,
+            "detail": self.detail,
+            "fix": self.fix,
+        }
 
 
 def _find_spec(name: str) -> bool:
@@ -93,11 +98,13 @@ class SetupEnv:
     module_available: Callable[[str], bool] = _find_spec
     list_sources: Callable[..., list[Any]] = _probe
     disk_free_mb: Callable[[Any], float] = field(
-        default=lambda path: shutil.disk_usage(path).free / (1024 * 1024))
+        default=lambda path: shutil.disk_usage(path).free / (1024 * 1024)
+    )
 
     @classmethod
-    def from_sentinel(cls, sentinel: Any, kwargs: Mapping[str, Any] | None = None, *,
-                      probe_sources: bool = True) -> SetupEnv:
+    def from_sentinel(
+        cls, sentinel: Any, kwargs: Mapping[str, Any] | None = None, *, probe_sources: bool = True
+    ) -> SetupEnv:
         """Build from a live :class:`Sentinel`. ``kwargs``: the calling session, if any."""
         route: dict[str, Any] | None = None
         if kwargs is not None:
@@ -154,20 +161,33 @@ def _check_deps(env: SetupEnv) -> Check:
     names = {"cv2": "opencv-python-headless"}
     pretty = ", ".join(names.get(m, m) for m in missing)
     if set(missing) == {"mss"}:
-        return Check("deps", "Python packages", WARN,
-                     "mss is missing, so screen capture will not work (cameras are fine).",
-                     DEPS_HINT)
-    return Check("deps", "Python packages", FAIL, f"Missing: {pretty}.",
-                 DEPS_HINT + "  (in the Python environment Hermes runs in)")
+        return Check(
+            "deps",
+            "Python packages",
+            WARN,
+            "mss is missing, so screen capture will not work (cameras are fine).",
+            DEPS_HINT,
+        )
+    return Check(
+        "deps",
+        "Python packages",
+        FAIL,
+        f"Missing: {pretty}.",
+        DEPS_HINT + "  (in the Python environment Hermes runs in)",
+    )
 
 
 def _check_injection(env: SetupEnv) -> Check:
     title = "Alert delivery permission"
     blocked = env.alerter.delivery_blocked() if env.alerter is not None else None
     if blocked:
-        return Check("injection", title, FAIL,
-                     "Hermes refused to inject Sentinel's alerts into the chat.",
-                     GATEWAY_INJECTION_YAML)
+        return Check(
+            "injection",
+            title,
+            FAIL,
+            "Hermes refused to inject Sentinel's alerts into the chat.",
+            GATEWAY_INJECTION_YAML,
+        )
     sent = 0
     try:
         sent = int((env.alerter.stats() if env.alerter is not None else {}).get("sent", 0))
@@ -175,43 +195,66 @@ def _check_injection(env: SetupEnv) -> Check:
         sent = 0
     if sent > 0:
         return Check("injection", title, OK, f"{sent} alert(s) delivered since start.")
-    return Check("injection", title, WARN,
-                 "Cannot be verified from inside a plugin. The classic CLI needs nothing; "
-                 "every other surface (Desktop, Telegram, Discord...) needs this opt-in "
-                 "(off by default), otherwise alerts are refused.",
-                 GATEWAY_INJECTION_YAML)
+    return Check(
+        "injection",
+        title,
+        WARN,
+        "Cannot be verified from inside a plugin. The classic CLI needs nothing; "
+        "every other surface (Desktop, Telegram, Discord...) needs this opt-in "
+        "(off by default), otherwise alerts are refused.",
+        GATEWAY_INJECTION_YAML,
+    )
 
 
 def _check_vision(env: SetupEnv) -> Check:
     title = "Vision model"
     if env.has_llm is False:
-        return Check("vision", title, FAIL,
-                     "This Hermes did not give the plugin an LLM interface (ctx.llm).",
-                     "Update Hermes to a release that supports plugin LLM calls (>=0.22.5).")
-    return Check("vision", title, WARN,
-                 "Plugins cannot read model routing, so this is unverified: unless you set "
-                 "the auxiliary task sentinel_vision, it uses your default model, which must "
-                 "accept images.", VISION_YAML)
+        return Check(
+            "vision",
+            title,
+            FAIL,
+            "This Hermes did not give the plugin an LLM interface (ctx.llm).",
+            "Update Hermes to a release that supports plugin LLM calls (>=0.22.5).",
+        )
+    return Check(
+        "vision",
+        title,
+        WARN,
+        "Plugins cannot read model routing, so this is unverified: unless you set "
+        "the auxiliary task sentinel_vision, it uses your default model, which must "
+        "accept images.",
+        VISION_YAML,
+    )
 
 
 def _check_sources(env: SetupEnv) -> tuple[Check, list[Any]]:
     title = "Cameras and screens"
     if not env.probe_sources:
-        return Check("sources", title, OK,
-                     "Devices not probed here (skipped, or the watcher holds them). Run "
-                     "/sentinel setup or press Check devices."), []
-    infos = env.list_sources(named_streams=_named_streams(env), total_timeout=PROBE_TOTAL_TIMEOUT,
-                             per_camera_timeout=PROBE_CAMERA_TIMEOUT)
+        return Check(
+            "sources",
+            title,
+            OK,
+            "Devices not probed here (skipped, or the watcher holds them). Run "
+            "/sentinel setup or press Check devices.",
+        ), []
+    infos = env.list_sources(
+        named_streams=_named_streams(env),
+        total_timeout=PROBE_TOTAL_TIMEOUT,
+        per_camera_timeout=PROBE_CAMERA_TIMEOUT,
+    )
     found = [i for i in infos if i.available is True]
     configured = [i for i in infos if i.available is None]
     if found or configured:
         parts = [f"{i.spec} ({i.name})" for i in found] + [f"{i.spec} (stream)" for i in configured]
         return Check("sources", title, OK, "Found: " + ", ".join(parts) + "."), infos
-    return Check("sources", title, WARN,
-                 "No camera, monitor or stream found (a headless box, no webcam, or a "
-                 "permission problem).",
-                 "Plug in or allow a camera, or watch a snapshot:https://..., rtsp:// or "
-                 "folder:/path source instead."), infos
+    return Check(
+        "sources",
+        title,
+        WARN,
+        "No camera, monitor or stream found (a headless box, no webcam, or a permission problem).",
+        "Plug in or allow a camera, or watch a snapshot:https://..., rtsp:// or "
+        "folder:/path source instead.",
+    ), infos
 
 
 def _check_default_source(env: SetupEnv, infos: list[Any]) -> Check:
@@ -220,10 +263,14 @@ def _check_default_source(env: SetupEnv, infos: list[Any]) -> Check:
     try:
         spec = SourceSpec.parse(raw, named_streams=_named_streams(env))
     except SourceSpecError as exc:
-        return Check("default_source", title, FAIL,
-                     f"default_source {_mask(raw)!r} is not valid: {_mask(exc)}",
-                     "Set default_source to camera:N, screen[:N], rtsp://..., stream:<name>, "
-                     "snapshot:https://... or folder:/path in the plugin settings.")
+        return Check(
+            "default_source",
+            title,
+            FAIL,
+            f"default_source {_mask(raw)!r} is not valid: {_mask(exc)}",
+            "Set default_source to camera:N, screen[:N], rtsp://..., stream:<name>, "
+            "snapshot:https://... or folder:/path in the plugin settings.",
+        )
     label = _mask(spec.name or raw)
     if spec.kind in ("camera", "screen") and infos:
         want = f"{spec.kind}:{spec.target}"
@@ -231,9 +278,13 @@ def _check_default_source(env: SetupEnv, infos: list[Any]) -> Check:
         if spec.kind == "screen" and spec.target == 0:
             known |= {"screen:0"}
         if known and want not in known:
-            return Check("default_source", title, WARN,
-                         f"{want} was not found; available: {', '.join(sorted(known))}.",
-                         "Change default_source to one of those.")
+            return Check(
+                "default_source",
+                title,
+                WARN,
+                f"{want} was not found; available: {', '.join(sorted(known))}.",
+                "Change default_source to one of those.",
+            )
     return Check("default_source", title, OK, f"{label} parses as a {spec.kind} source.")
 
 
@@ -241,8 +292,13 @@ def _check_config(env: SetupEnv) -> Check | None:
     problems = list(getattr(env.config, "problems", ()) or ())
     if not problems:
         return None
-    return Check("config", "Plugin settings", WARN, _mask("; ".join(problems)),
-                 "Fix the listed values under plugins.entries.hermes-sentinel.settings.")
+    return Check(
+        "config",
+        "Plugin settings",
+        WARN,
+        _mask("; ".join(problems)),
+        "Fix the listed values under plugins.entries.hermes-sentinel.settings.",
+    )
 
 
 def _check_engine(env: SetupEnv) -> Check:
@@ -252,9 +308,13 @@ def _check_engine(env: SetupEnv) -> Check:
         return Check("engine", title, OK, "Running.")
     if engine is not None and getattr(engine, "standing_by", False):
         return Check("engine", title, OK, "Standing by: another Hermes process is watching.")
-    return Check("engine", title, OK,
-                 "Not started yet; it starts with the first watch rule (or shortly after Hermes "
-                 "loads when enabled rules exist).")
+    return Check(
+        "engine",
+        title,
+        OK,
+        "Not started yet; it starts with the first watch rule (or shortly after Hermes "
+        "loads when enabled rules exist).",
+    )
 
 
 def _check_storage(env: SetupEnv) -> Check:
@@ -268,33 +328,55 @@ def _check_storage(env: SetupEnv) -> Check:
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
     except Exception as exc:  # noqa: BLE001
-        return Check("storage", title, FAIL,
-                     f"Cannot open or write the data directory: {_mask(exc)}",
-                     "Check permissions and free space of HERMES_HOME/plugin-data/hermes-sentinel.")
+        return Check(
+            "storage",
+            title,
+            FAIL,
+            f"Cannot open or write the data directory: {_mask(exc)}",
+            "Check permissions and free space of HERMES_HOME/plugin-data/hermes-sentinel.",
+        )
     try:
         free = float(env.disk_free_mb(path))
     except Exception:  # noqa: BLE001
         return Check("storage", title, OK, f"Writable at {path}.")
     if free < LOW_DISK_FAIL_MB:
-        return Check("storage", title, FAIL, f"Only {free:.0f} MB free at {path}.",
-                     "Free disk space; snapshots cannot be saved.")
+        return Check(
+            "storage",
+            title,
+            FAIL,
+            f"Only {free:.0f} MB free at {path}.",
+            "Free disk space; snapshots cannot be saved.",
+        )
     if free < LOW_DISK_WARN_MB:
-        return Check("storage", title, WARN, f"Writable, but only {free:.0f} MB free.",
-                     "Free disk space or lower max_storage_mb.")
+        return Check(
+            "storage",
+            title,
+            WARN,
+            f"Writable, but only {free:.0f} MB free.",
+            "Free disk space or lower max_storage_mb.",
+        )
     return Check("storage", title, OK, f"Writable at {path}, {free / 1024:.1f} GB free.")
 
 
 def _check_delivery(env: SetupEnv) -> Check:
     title = "Alert destination"
     if env.route is None:
-        return Check("delivery", title, OK,
-                     "Not tied to a session here. Run /sentinel setup in the chat that should "
-                     "get alerts to check it.")
+        return Check(
+            "delivery",
+            title,
+            OK,
+            "Not tied to a session here. Run /sentinel setup in the chat that should "
+            "get alerts to check it.",
+        )
     if env.route.get("session_key"):
         return Check("delivery", title, OK, "This chat is known; alerts will come back here.")
-    return Check("delivery", title, WARN,
-                 "This session did not identify its chat, so alerts may not find their way back.",
-                 "Send /sentinel here in the chat that should receive alerts.")
+    return Check(
+        "delivery",
+        title,
+        WARN,
+        "This session did not identify its chat, so alerts may not find their way back.",
+        "Send /sentinel here in the chat that should receive alerts.",
+    )
 
 
 def _check_budget(env: SetupEnv) -> Check:
@@ -303,18 +385,37 @@ def _check_budget(env: SetupEnv) -> Check:
     hour = getattr(cfg, "vision_calls_per_hour", None)
     day = getattr(cfg, "vision_calls_per_day", None)
     if hour == 0 or day == 0:
-        return Check("budget", title, FAIL, "A cap of 0 pauses all judging; nothing can fire.",
-                     "Set vision_calls_per_hour / vision_calls_per_day above 0.")
+        return Check(
+            "budget",
+            title,
+            FAIL,
+            "A cap of 0 pauses all judging; nothing can fire.",
+            "Set vision_calls_per_hour / vision_calls_per_day above 0.",
+        )
     if hour is None or day is None:
-        return Check("budget", title, WARN, "No cap on vision calls: a busy scene can cost a lot.",
-                     "Set vision_calls_per_hour (default 60) and vision_calls_per_day (500).")
+        return Check(
+            "budget",
+            title,
+            WARN,
+            "No cap on vision calls: a busy scene can cost a lot.",
+            "Set vision_calls_per_hour (default 60) and vision_calls_per_day (500).",
+        )
     if day < hour:
-        return Check("budget", title, WARN,
-                     f"Daily cap {day} is below the hourly cap {hour}; the daily cap will bind.",
-                     "Raise vision_calls_per_day or lower vision_calls_per_hour.")
+        return Check(
+            "budget",
+            title,
+            WARN,
+            f"Daily cap {day} is below the hourly cap {hour}; the daily cap will bind.",
+            "Raise vision_calls_per_day or lower vision_calls_per_hour.",
+        )
     if hour > HOURLY_SANE_MAX:
-        return Check("budget", title, WARN, f"{hour}/hour is a high cap for a cloud model.",
-                     "Lower vision_calls_per_hour unless a local model does the judging.")
+        return Check(
+            "budget",
+            title,
+            WARN,
+            f"{hour}/hour is a high cap for a cloud model.",
+            "Lower vision_calls_per_hour unless a local model does the judging.",
+        )
     return Check("budget", title, OK, f"{hour}/hour, {day}/day.")
 
 
@@ -335,12 +436,26 @@ def _check_rules(env: SetupEnv) -> Check:
                 label = _mask(src.get("source"))
                 offline.extend(f"{rid} ({label})" for rid in src.get("rules", []))
     if offline:
-        return Check("rules", title, WARN, f"{detail} Source offline for: {', '.join(offline)}.",
-                     "Check the camera/stream is connected and not used by another program.")
-    if enabled and engine is not None and not getattr(engine, "running", False) \
-            and not getattr(engine, "standing_by", False):
-        return Check("rules", title, WARN, f"{detail} The watcher is not running.",
-                     "It starts shortly after Hermes loads; use /sentinel status to confirm.")
+        return Check(
+            "rules",
+            title,
+            WARN,
+            f"{detail} Source offline for: {', '.join(offline)}.",
+            "Check the camera/stream is connected and not used by another program.",
+        )
+    if (
+        enabled
+        and engine is not None
+        and not getattr(engine, "running", False)
+        and not getattr(engine, "standing_by", False)
+    ):
+        return Check(
+            "rules",
+            title,
+            WARN,
+            f"{detail} The watcher is not running.",
+            "It starts shortly after Hermes loads; use /sentinel status to confirm.",
+        )
     return Check("rules", title, OK, detail)
 
 
@@ -368,8 +483,7 @@ def run_checks(env: SetupEnv) -> list[Check]:
     out.append(_safe("injection", "Alert delivery permission", lambda: _check_injection(env)))
     out.append(_safe("vision", "Vision model", lambda: _check_vision(env)))
     out.append(_safe("sources", "Cameras and screens", sources))
-    out.append(_safe("default_source", "Default source",
-                     lambda: _check_default_source(env, infos)))
+    out.append(_safe("default_source", "Default source", lambda: _check_default_source(env, infos)))
     out.append(_safe("config", "Plugin settings", lambda: _check_config(env)))
     out.append(_safe("engine", "Watcher", lambda: _check_engine(env)))
     out.append(_safe("storage", "Storage", lambda: _check_storage(env)))

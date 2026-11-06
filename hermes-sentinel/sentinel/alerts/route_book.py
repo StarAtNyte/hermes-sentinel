@@ -41,7 +41,7 @@ class RouteBook:
             return
         if not isinstance(data, dict):
             return
-        for session_id, route in list(data.items())[-self._limit:]:
+        for session_id, route in list(data.items())[-self._limit :]:
             if isinstance(session_id, str) and isinstance(route, dict):
                 clean = route_from_kwargs(route)
                 if clean:

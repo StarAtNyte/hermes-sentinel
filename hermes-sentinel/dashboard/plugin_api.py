@@ -82,8 +82,7 @@ def _json(payload: Any, status: int = 200) -> JSONResponse:
 def _package_names() -> list[str]:
     """Names of loaded Sentinel plugin packages (Hermes names vary by profile scope)."""
     return sorted(
-        k for k in list(sys.modules)
-        if k == PACKAGE or k.startswith(PACKAGE + _NAMESPACE_SUFFIX)
+        k for k in list(sys.modules) if k == PACKAGE or k.startswith(PACKAGE + _NAMESPACE_SUFFIX)
     )
 
 
@@ -207,7 +206,9 @@ def _check_event_id(event_id: str) -> int:
 _PREFIX_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*:)(?=[A-Za-z][A-Za-z0-9+.-]*://)")
 _GENERIC_SEGMENT_RE = re.compile(
     r"^(?:stream|ch|channel|cam|camera|video|profile|live|main|sub|h26[45]|streaming|channels|"
-    r"media|unicast|onvif)\d*$|^\d{1,4}$", re.IGNORECASE)
+    r"media|unicast|onvif)\d*$|^\d{1,4}$",
+    re.IGNORECASE,
+)
 _USERINFO_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)([^/?#@]*)@")
 
 
@@ -216,11 +217,11 @@ def _mask_word(redact: Any, word: str) -> str:
     prefix = ""
     m = _PREFIX_RE.match(word)
     if m:
-        prefix, word = m.group(1), word[m.end():]
+        prefix, word = m.group(1), word[m.end() :]
     word = redact(word)
     m = _USERINFO_RE.match(word)
     if m and "${" not in m.group(2):
-        word = f"{m.group(1)}***@{word[m.end():]}"  # token-only userinfo
+        word = f"{m.group(1)}***@{word[m.end() :]}"  # token-only userinfo
     # RTSP URLs often carry the secret in the path (rtsp://h/live/<token>). Keep only generic
     # path segments (stream1, ch2, live, 101...); otherwise show a short digest so two
     # cameras on one recorder stay distinguishable without revealing the path.
@@ -240,17 +241,18 @@ def _mask_word(redact: Any, word: str) -> str:
 def _mask(text: Any) -> str:
     """Make a source spec / error string safe to return: no URL credentials, bounded."""
     redact = _mod("sources").redact_url
-    out = " ".join(
-        _mask_word(redact, w) if "://" in w else w for w in str(text or "").split(" ")
-    )
+    out = " ".join(_mask_word(redact, w) if "://" in w else w for w in str(text or "").split(" "))
     return out[:MAX_SOURCE]
 
 
 def _source_key(sentinel: Any, spec: str) -> str:
     engine = sentinel.engine_if_built
     try:
-        key = engine.source_key(spec) if engine is not None else _mod("engine").default_source_key(
-            spec, sentinel.config.stream_urls)
+        key = (
+            engine.source_key(spec)
+            if engine is not None
+            else _mod("engine").default_source_key(spec, sentinel.config.stream_urls)
+        )
     except Exception:  # noqa: BLE001
         key = str(spec).strip()
     return _mask(key)
@@ -359,14 +361,26 @@ def _collect_sources(sentinel: Any) -> list[dict[str, Any]]:
             online, age, error = info["online"], info["last_frame_age_s"], info["error"]
         else:
             online, age = False, None
-            error = None if running else (
-                "another Hermes process is running the watcher"
-                if engine is not None and engine.standing_by else "watcher is not running")
-        out.append({
-            "key": key, "label": label, "kind": kind, "online": online,
-            "last_frame_age_s": age, "rules": groups[key]["rules"],
-            "error": _mask(error) if error else None,
-        })
+            error = (
+                None
+                if running
+                else (
+                    "another Hermes process is running the watcher"
+                    if engine is not None and engine.standing_by
+                    else "watcher is not running"
+                )
+            )
+        out.append(
+            {
+                "key": key,
+                "label": label,
+                "kind": kind,
+                "online": online,
+                "last_frame_age_s": age,
+                "rules": groups[key]["rules"],
+                "error": _mask(error) if error else None,
+            }
+        )
     return out
 
 
@@ -378,8 +392,13 @@ def _status() -> dict[str, Any]:
     base: dict[str, Any] = {
         "engine": {"running": False, "standby": False, "since": None},
         "delivery": {"blocked": False, "reason": None},
-        "budget": {"hour_used": 0, "hour_cap": None, "day_used": 0, "day_cap": None,
-                   "paused": False},
+        "budget": {
+            "hour_used": 0,
+            "hour_cap": None,
+            "day_used": 0,
+            "day_cap": None,
+            "paused": False,
+        },
         "sources": 0,
         "rules": 0,
         "version": _version(),
@@ -397,13 +416,19 @@ def _status() -> dict[str, Any]:
     reason = sentinel.alerter.delivery_blocked()
     base["delivery"] = {"blocked": bool(reason), "reason": reason}
     cfg = sentinel.config
-    base["budget"].update(hour_cap=cfg.vision_calls_per_hour, day_cap=cfg.vision_calls_per_day,
-                          paused=cfg.vision_calls_per_hour == 0)
+    base["budget"].update(
+        hour_cap=cfg.vision_calls_per_hour,
+        day_cap=cfg.vision_calls_per_day,
+        paused=cfg.vision_calls_per_hour == 0,
+    )
     try:
         st = sentinel.budget.status()
         base["budget"] = {
-            "hour_used": st.hour_used, "hour_cap": st.hour_cap, "day_used": st.day_used,
-            "day_cap": st.day_cap, "paused": bool(st.exhausted or st.hour_cap == 0),
+            "hour_used": st.hour_used,
+            "hour_cap": st.hour_cap,
+            "day_used": st.day_used,
+            "day_cap": st.day_cap,
+            "paused": bool(st.exhausted or st.hour_cap == 0),
         }
         base["rules"] = len(sentinel.store.list_rules())
         base["sources"] = len(_collect_sources(sentinel))
@@ -432,10 +457,15 @@ def _setup(probe: bool) -> dict[str, Any]:
     sentinel = _need()
     mod = _mod("setup_check")
     checks = mod.run_checks(mod.SetupEnv.from_sentinel(sentinel, None, probe_sources=probe))
-    out: dict[str, Any] = {"ok": True, "probed": probe, **mod.summarize(checks),
-                           "summary": mod.format_report(checks).splitlines()[-1]}
-    out["checks"] = [{**c.to_dict(), "detail": _mask(c.detail), "fix": _mask(c.fix)}
-                     for c in checks]
+    out: dict[str, Any] = {
+        "ok": True,
+        "probed": probe,
+        **mod.summarize(checks),
+        "summary": mod.format_report(checks).splitlines()[-1],
+    }
+    out["checks"] = [
+        {**c.to_dict(), "detail": _mask(c.detail), "fix": _mask(c.fix)} for c in checks
+    ]
     return out
 
 
@@ -553,14 +583,16 @@ def _list_events(limit: str | None, rule_id: str | None, since: str | None) -> l
         return []
     store = sentinel.store
     events = store.query_events(
-        rule_id=rid, since=bound.astimezone(UTC) if bound else None, limit=n)
+        rule_id=rid, since=bound.astimezone(UTC) if bound else None, limit=n
+    )
     rule_map = {spec.id: spec for spec in store.list_rules()}
     return [_event_item(e, rule_map) for e in events]
 
 
 @router.get("/events")
-async def events(limit: str | None = None, rule_id: str | None = None,
-                 since: str | None = None) -> Any:
+async def events(
+    limit: str | None = None, rule_id: str | None = None, since: str | None = None
+) -> Any:
     result = await _run(_list_events, limit, rule_id, since)
     return result if isinstance(result, Response) else _json(result)
 
@@ -608,8 +640,11 @@ def _feedback(event_id: str, data: dict[str, Any]) -> dict[str, Any]:
     if threshold is None and rule is not None:
         threshold = rule.confidence_threshold
     rules_map = {rule.id: rule} if rule is not None else {}
-    return {"ok": True, "event": _event_item(event, rules_map),
-            "threshold": float(threshold) if threshold is not None else 0.0}
+    return {
+        "ok": True,
+        "event": _event_item(event, rules_map),
+        "threshold": float(threshold) if threshold is not None else 0.0,
+    }
 
 
 @router.post("/events/{event_id}/feedback")

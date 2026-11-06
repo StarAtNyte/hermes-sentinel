@@ -308,8 +308,11 @@ def _normalize_input_block(block: PluginLlmInput) -> dict[str, Any]:
     if isinstance(block, PluginLlmTextInput):
         return {"type": "text", "text": block.text}
     if isinstance(block, PluginLlmImageInput):
-        d: dict[str, Any] = {"type": "image", "mime_type": block.mime_type,
-                             "file_name": block.file_name}
+        d: dict[str, Any] = {
+            "type": "image",
+            "mime_type": block.mime_type,
+            "file_name": block.file_name,
+        }
         if block.data is not None:
             d["data"] = block.data
         if block.url:
@@ -527,13 +530,24 @@ class FakeLlm:
         task: str | None = None,
     ) -> PluginLlmCompleteResult:
         eff_provider, eff_model, eff_agent, eff_profile, eff_task = self._gate(
-            "complete", provider=provider, model=model, agent_id=agent_id, profile=profile,
+            "complete",
+            provider=provider,
+            model=model,
+            agent_id=agent_id,
+            profile=profile,
             task=task,
         )
         kwargs = dict(
-            messages=messages, provider=provider, model=model, temperature=temperature,
-            max_tokens=max_tokens, timeout=timeout, agent_id=agent_id, profile=profile,
-            purpose=purpose, task=task,
+            messages=messages,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            agent_id=agent_id,
+            profile=profile,
+            purpose=purpose,
+            task=task,
         )
         call = self._record("complete", kwargs, [])
         response = self._resolve(call)
@@ -563,9 +577,16 @@ class FakeLlm:
         task: str | None = None,
     ) -> PluginLlmCompleteResult:
         return self.complete(
-            messages, provider=provider, model=model, temperature=temperature,
-            max_tokens=max_tokens, timeout=timeout, agent_id=agent_id, profile=profile,
-            purpose=purpose, task=task,
+            messages,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            agent_id=agent_id,
+            profile=profile,
+            purpose=purpose,
+            task=task,
         )
 
     def complete_structured(
@@ -589,10 +610,21 @@ class FakeLlm:
     ) -> PluginLlmStructuredResult:
         return self._structured(
             "complete_structured",
-            instructions=instructions, input=input, json_schema=json_schema, json_mode=json_mode,
-            schema_name=schema_name, system_prompt=system_prompt, provider=provider, model=model,
-            temperature=temperature, max_tokens=max_tokens, timeout=timeout, agent_id=agent_id,
-            profile=profile, purpose=purpose, task=task,
+            instructions=instructions,
+            input=input,
+            json_schema=json_schema,
+            json_mode=json_mode,
+            schema_name=schema_name,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            agent_id=agent_id,
+            profile=profile,
+            purpose=purpose,
+            task=task,
         )
 
     async def acomplete_structured(
@@ -616,18 +648,33 @@ class FakeLlm:
     ) -> PluginLlmStructuredResult:
         return self._structured(
             "acomplete_structured",
-            instructions=instructions, input=input, json_schema=json_schema, json_mode=json_mode,
-            schema_name=schema_name, system_prompt=system_prompt, provider=provider, model=model,
-            temperature=temperature, max_tokens=max_tokens, timeout=timeout, agent_id=agent_id,
-            profile=profile, purpose=purpose, task=task,
+            instructions=instructions,
+            input=input,
+            json_schema=json_schema,
+            json_mode=json_mode,
+            schema_name=schema_name,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            agent_id=agent_id,
+            profile=profile,
+            purpose=purpose,
+            task=task,
         )
 
     def _structured(self, method: str, **kw: Any) -> PluginLlmStructuredResult:
         # Order matches the host: argument check, trust gate, then input-shape errors.
         _structured_spec(method, kw["instructions"], kw["input"])
         eff_provider, eff_model, eff_agent, eff_profile, eff_task = self._gate(
-            method, provider=kw["provider"], model=kw["model"], agent_id=kw["agent_id"],
-            profile=kw["profile"], task=kw["task"],
+            method,
+            provider=kw["provider"],
+            model=kw["model"],
+            agent_id=kw["agent_id"],
+            profile=kw["profile"],
+            task=kw["task"],
         )
         inputs = list(kw["input"])
         blocks = [_summarize(_normalize_input_block(b)) for b in inputs]
@@ -658,9 +705,7 @@ def _validate_setting_key(key: Any) -> tuple[str, ...]:
     if not isinstance(key, str):
         raise ValueError("Expected a plugin-relative config key string")
     segments = tuple(key.split("."))
-    invalid = (
-        not key or "/" in key or "\\" in key or segments[0].lower() in _SETTING_RESERVED_ROOTS
-    )
+    invalid = not key or "/" in key or "\\" in key or segments[0].lower() in _SETTING_RESERVED_ROOTS
     if invalid or not all(_SETTING_SEGMENT_RE.fullmatch(s) for s in segments):
         raise ValueError(
             "Expected a plugin-relative config key such as 'endpoint' or 'retry.policy'; "
@@ -849,8 +894,9 @@ class FakeCtx:
                 "to allow this plugin to replace built-in tools."
             )
         if name in self.host.tools and not override:
-            self._warn(f"Plugin {self.plugin_id} tried to shadow global tool {name} "
-                       "without override=True")
+            self._warn(
+                f"Plugin {self.plugin_id} tried to shadow global tool {name} without override=True"
+            )
             return None
         if not isinstance(schema, dict):
             raise ValueError(f"Tool {name!r}: schema must be a dict, got {type(schema).__name__}")
@@ -863,13 +909,22 @@ class FakeCtx:
         with self._lock:
             existing = self.tools.get(name)
             if existing and existing["toolset"] != toolset and not override:
-                self._warn(f"Tool registration REJECTED: '{name}' (toolset '{toolset}') would "
-                           f"shadow existing tool from toolset '{existing['toolset']}'")
+                self._warn(
+                    f"Tool registration REJECTED: '{name}' (toolset '{toolset}') would "
+                    f"shadow existing tool from toolset '{existing['toolset']}'"
+                )
                 return None
             entry = dict(
-                name=name, toolset=toolset, schema=schema, handler=handler, check_fn=check_fn,
-                requires_env=requires_env, is_async=is_async, description=description,
-                emoji=emoji, override=override,
+                name=name,
+                toolset=toolset,
+                schema=schema,
+                handler=handler,
+                check_fn=check_fn,
+                requires_env=requires_env,
+                is_async=is_async,
+                description=description,
+                emoji=emoji,
+                override=override,
             )
             self.tools[name] = entry
 
@@ -881,12 +936,18 @@ class FakeCtx:
         return self._handle("tool", name, undo)
 
     def _track_callback(
-        self, kind: str, key: str, callback: Callable, mapping: dict[str, list[Callable]],
+        self,
+        kind: str,
+        key: str,
+        callback: Callable,
+        mapping: dict[str, list[Callable]],
         valid: frozenset[str],
     ) -> FakeRegistration:
         if key not in valid:
-            self._warn(f"Plugin '{self.plugin_id}' registered unknown {kind} '{key}' "
-                       f"(valid: {', '.join(sorted(valid))})")
+            self._warn(
+                f"Plugin '{self.plugin_id}' registered unknown {kind} '{key}' "
+                f"(valid: {', '.join(sorted(valid))})"
+            )
         with self._lock:
             mapping.setdefault(key, []).append(callback)
 
@@ -906,8 +967,10 @@ class FakeCtx:
         """Register a hook; ``hold_stream`` only counts on ``transform_llm_output``."""
         handle = self._track_callback("hook", hook_name, callback, self.hooks, self.host.hooks)
         if hold_stream and hook_name != "transform_llm_output":
-            self._warn(f"Plugin '{self.plugin_id}' set hold_stream on '{hook_name}'; "
-                       "only transform_llm_output rewrites the reply, ignored")
+            self._warn(
+                f"Plugin '{self.plugin_id}' set hold_stream on '{hook_name}'; "
+                "only transform_llm_output rewrites the reply, ignored"
+            )
         else:
             handle.hold_stream = hold_stream
         return handle
@@ -930,8 +993,10 @@ class FakeCtx:
             self._warn(f"Plugin '{self.plugin_id}' tried to register a command with an empty name.")
             return None
         if clean in self.host.commands:
-            self._warn(f"Plugin '{self.plugin_id}' tried to register command '/{clean}' which "
-                       "conflicts with a built-in command. Skipping.")
+            self._warn(
+                f"Plugin '{self.plugin_id}' tried to register command '/{clean}' which "
+                "conflicts with a built-in command. Skipping."
+            )
             return None
         hint = (args_hint or "").strip()
         entry = dict(
@@ -963,8 +1028,13 @@ class FakeCtx:
         description: str = "",
     ) -> FakeRegistration:
         entry = dict(
-            name=name, help=help, description=description, setup_fn=setup_fn,
-            handler_fn=handler_fn, plugin=self.manifest.get("name"), plugin_key=self.plugin_id,
+            name=name,
+            help=help,
+            description=description,
+            setup_fn=setup_fn,
+            handler_fn=handler_fn,
+            plugin=self.manifest.get("name"),
+            plugin_key=self.plugin_id,
         )
         with self._lock:
             self.cli_commands[name] = entry
@@ -981,32 +1051,49 @@ class FakeCtx:
     ) -> FakeRegistration:
         me = self.manifest.get("name", self.plugin_id)
         if not key or not isinstance(key, str):
-            raise ValueError(f"Plugin '{me}' tried to register auxiliary task with invalid key "
-                             f"{key!r}")
+            raise ValueError(
+                f"Plugin '{me}' tried to register auxiliary task with invalid key {key!r}"
+            )
         if not all(c.isalnum() or c == "_" for c in key):
-            raise ValueError(f"Plugin '{me}' auxiliary task key {key!r} must contain only "
-                             "alphanumeric characters and underscores")
+            raise ValueError(
+                f"Plugin '{me}' auxiliary task key {key!r} must contain only "
+                "alphanumeric characters and underscores"
+            )
         if key in self.host.aux_tasks:
-            raise ValueError(f"Plugin '{me}' cannot register auxiliary task {key!r} - that key "
-                             f"is reserved for a built-in task. Pick a plugin-namespaced key "
-                             f"(e.g. '{me}_{key}').")
+            raise ValueError(
+                f"Plugin '{me}' cannot register auxiliary task {key!r} - that key "
+                f"is reserved for a built-in task. Pick a plugin-namespaced key "
+                f"(e.g. '{me}_{key}')."
+            )
         if inherit_from is not None and (
             not isinstance(inherit_from, str)
             or inherit_from == key
             or (inherit_from not in self.host.aux_tasks and inherit_from not in self.aux_tasks)
         ):
-            self._warn(f"Plugin '{me}' auxiliary task {key!r}: ignoring inherit_from="
-                       f"{inherit_from!r}")
+            self._warn(
+                f"Plugin '{me}' auxiliary task {key!r}: ignoring inherit_from={inherit_from!r}"
+            )
             inherit_from = None
         task_defaults = (
             dict(defaults or {})
             if inherit_from
-            else {"provider": "auto", "model": "", "base_url": "", "api_key": "", "timeout": 60,
-                  "extra_body": {}, **(defaults or {})}
+            else {
+                "provider": "auto",
+                "model": "",
+                "base_url": "",
+                "api_key": "",
+                "timeout": 60,
+                "extra_body": {},
+                **(defaults or {}),
+            }
         )
         entry = dict(
-            key=key, display_name=display_name, description=description,
-            defaults=task_defaults, inherit_from=inherit_from, plugin=self.plugin_id,
+            key=key,
+            display_name=display_name,
+            description=description,
+            defaults=task_defaults,
+            inherit_from=inherit_from,
+            plugin=self.plugin_id,
         )
         with self._lock:
             self.aux_tasks[key] = entry
@@ -1015,12 +1102,16 @@ class FakeCtx:
     def register_platform_handler(self, platform: str, factory: Callable) -> None:
         me = self.manifest.get("name", self.plugin_id)
         if not callable(factory):
-            raise ValueError(f"Plugin '{me}' tried to register a platform handler factory with "
-                             "a non-callable factory.")
+            raise ValueError(
+                f"Plugin '{me}' tried to register a platform handler factory with "
+                "a non-callable factory."
+            )
         key = (platform or "").strip().lower()
         if not key:
-            raise ValueError(f"Plugin '{me}' tried to register a platform handler factory with "
-                             "an empty platform name.")
+            raise ValueError(
+                f"Plugin '{me}' tried to register a platform handler factory with "
+                "an empty platform name."
+            )
         with self._lock:
             self.platform_handlers.setdefault(key, []).append(factory)
 
@@ -1068,8 +1159,10 @@ class FakeCtx:
         if origin is not None and not isinstance(origin, Mapping):
             return "origin must be a mapping in the SessionSource.to_dict() shape"
         if not self.gateway_injection_allowed:
-            return (f"gateway injection denied for plugin {self._plugin_id}; set plugins.entries."
-                    f"{self._plugin_id}.allow_gateway_injection: true to allow it")
+            return (
+                f"gateway injection denied for plugin {self._plugin_id}; set plugins.entries."
+                f"{self._plugin_id}.allow_gateway_injection: true to allow it"
+            )
         if not self.gateway_live:
             return "no live gateway is available"
         return ""

@@ -2,9 +2,13 @@
 
 Nothing here imports Hermes. Run from the project root: `uv run --group dev pytest`.
 
+## Layout
+
+Test directories mirror `sentinel/` (`tests/storage/` tests `sentinel/storage/`, and so on). Everything shared between test files lives here in `tests/harness/`, never in a test module or a conftest: `fake_ctx`, `hermes_shims`, `hermes_surface`, `llm_types`, `scenes`, `plugin_loader`, plus per-area helpers `source_fakes` (sources), `store_helpers` (storage), `gate_helpers` and `judge_helpers` (vision), `fake_sources`. Package `conftest.py` files hold fixtures only.
+
 ## Module identity
 
-`plugin_loader` imports the plugin as `hermes_plugins.hermes_sentinel`, the name Hermes' loader uses. Reach plugin code through `plugin_module("sentinel.sources")`, never as a top-level `sentinel` package (pytest's `pythonpath` does not include the plugin dir). With one import path, exception classes are the same objects in the plugin, the harness and the tests. `import_plugin_fresh()` re-imports the package like a force reload; it creates new class objects, so restore `sys.modules` afterwards (see `test_plugin_loader.py`).
+`plugin_loader` imports the plugin as `hermes_plugins.hermes_sentinel`, the name Hermes' loader uses. Reach plugin code through `plugin_module("sentinel.sources")` (or `"sentinel.storage"`, `"sentinel.rules"`), never as a top-level `sentinel` package (pytest's `pythonpath` does not include the plugin dir). With one import path, exception classes are the same objects in the plugin, the harness and the tests. `import_plugin_fresh()` re-imports the package like a force reload; it creates new class objects, so restore `sys.modules` afterwards (see `test_plugin_loader.py`).
 
 ## Hermes module shims (`hermes_shims`)
 

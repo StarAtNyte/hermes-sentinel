@@ -24,7 +24,7 @@ judge_mod = plugin_module("sentinel.judge")
 rules = plugin_module("sentinel.rules")
 runtime = plugin_module("sentinel.runtime")
 sources_mod = plugin_module("sentinel.sources")
-store_mod = plugin_module("sentinel.store")
+store_mod = plugin_module("sentinel.storage")
 
 Verdict = judge_mod.Verdict
 FRAME = np.full((60, 80, 3), 100, np.uint8)
@@ -91,18 +91,31 @@ class H:
         self.source = Source()
         self.gates = {}
         self.engine = engine_mod.Engine(
-            store=self.store, judge=self.judge,
+            store=self.store,
+            judge=self.judge,
             alerter=alerts.Alerter(ctx, clock=self.clock, per_rule_min_interval=0),
-            budget=budget_mod.Budget(self.store, per_hour=None, per_day=None,
-                                     clock=lambda: self.wall[0]),
+            budget=budget_mod.Budget(
+                self.store, per_hour=None, per_day=None, clock=lambda: self.wall[0]
+            ),
             config=config_mod.SentinelConfig(),
-            settings=settings or engine_mod.EngineSettings(
-                confirm_interval=1.0, judge_backoff_initial=1.0, judge_backoff_max=2.0,
-                judge_error_rearm=30.0, sync_interval=0.05, scheduler_interval=0.05,
-                capture_interval=0.01),
-            source_factory=lambda s: self.source, source_key=lambda s: s,
-            gate_factory=self.gate, clock=self.clock, wall_clock=lambda: self.wall[0],
-            lock_path=lock_path, threaded=threaded)
+            settings=settings
+            or engine_mod.EngineSettings(
+                confirm_interval=1.0,
+                judge_backoff_initial=1.0,
+                judge_backoff_max=2.0,
+                judge_error_rearm=30.0,
+                sync_interval=0.05,
+                scheduler_interval=0.05,
+                capture_interval=0.01,
+            ),
+            source_factory=lambda s: self.source,
+            source_key=lambda s: s,
+            gate_factory=self.gate,
+            clock=self.clock,
+            wall_clock=lambda: self.wall[0],
+            lock_path=lock_path,
+            threaded=threaded,
+        )
 
     def gate(self, spec):
         g = StubGate(spec)
@@ -217,8 +230,13 @@ def test_worker_lock_is_free_while_read_blocks(h):
 
 
 def test_stop_does_not_block_on_a_stuck_capture_thread(fake_ctx):
-    h = H(fake_ctx, threaded=True, settings=engine_mod.EngineSettings(
-        capture_interval=0.01, stop_timeout=0.3, scheduler_interval=0.05, sync_interval=5))
+    h = H(
+        fake_ctx,
+        threaded=True,
+        settings=engine_mod.EngineSettings(
+            capture_interval=0.01, stop_timeout=0.3, scheduler_interval=0.05, sync_interval=5
+        ),
+    )
     try:
         h.source.read_gate = threading.Event()
         h.add()
@@ -262,8 +280,9 @@ def test_no_judging_during_cooldown(h):
 def test_default_gate_stretches_idle_tick_for_trigger_rules(h):
     h.engine.config = config_mod.SentinelConfig(idle_check_seconds=300.0)
     trig = rules.RuleSpec(question="q?", source="cam", id="t").validate()
-    cond = rules.RuleSpec(question="q?", source="cam", id="c", mode="condition",
-                          hold_seconds=10).validate()
+    cond = rules.RuleSpec(
+        question="q?", source="cam", id="c", mode="condition", hold_seconds=10
+    ).validate()
     assert h.engine._default_gate(trig)._config.idle_check_seconds == 6 * 3600.0
     assert h.engine._default_gate(cond)._config.idle_check_seconds == 300.0
     h.engine.config = config_mod.SentinelConfig(idle_check_seconds=0.0)
@@ -339,7 +358,8 @@ def test_capture_thread_inherits_starting_context(fake_ctx):
 def test_open_timeout_thread_inherits_context():
     token = ctxvar.set("scoped")
     try:
-        out = sources_mod._call_with_timeout(lambda: ctxvar.get(), 5.0)
+        timeouts = plugin_module("sentinel.sources.timeouts")
+        out = timeouts.call_with_timeout(lambda: ctxvar.get(), 5.0)
     finally:
         ctxvar.reset(token)
     assert out == "scoped"
@@ -406,8 +426,9 @@ def test_hour_cap_retry_is_next_hour(plugin_data_dir, clock):
 
 def test_zero_retention_and_storage_fall_back_with_problems():
     cfg = config_mod.SentinelConfig.load(
-        {"retention_days": 0, "max_storage_mb": 0}.get if False else
-        (lambda k, d=None: {"retention_days": 0, "max_storage_mb": 0}.get(k, d))
+        {"retention_days": 0, "max_storage_mb": 0}.get
+        if False
+        else (lambda k, d=None: {"retention_days": 0, "max_storage_mb": 0}.get(k, d))
     )
     assert cfg.retention_days == 7.0 and cfg.max_storage_mb == 500.0
     assert any("retention_days" in p for p in cfg.problems)

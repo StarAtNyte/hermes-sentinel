@@ -920,8 +920,13 @@ def flicker_with_mug(
         should_trigger=True,
         description=f"Lighting flickers throughout; the mug is taken at frame {remove_at}.",
         notes={remove_at: "mug removed (during flicker)"},
-        meta={"event_frame": remove_at, "object": "mug", "object_bbox": box,
-              "gains": gains.tolist(), "nuisance": "lighting_flicker"},
+        meta={
+            "event_frame": remove_at,
+            "object": "mug",
+            "object_bbox": box,
+            "gains": gains.tolist(),
+            "nuisance": "lighting_flicker",
+        },
     )
 
 
@@ -956,8 +961,14 @@ def shake_with_mug(
         should_trigger=True,
         description=f"Camera shakes throughout; a mug appears at frame {appear_at}.",
         notes={appear_at: "mug appears (during shake)"},
-        meta={"event_frame": appear_at, "object": "mug", "object_bbox": box,
-              "shifts": shifts.tolist(), "max_shift": max_shift, "nuisance": "camera_shake"},
+        meta={
+            "event_frame": appear_at,
+            "object": "mug",
+            "object_bbox": box,
+            "shifts": shifts.tolist(),
+            "max_shift": max_shift,
+            "nuisance": "camera_shake",
+        },
     )
 
 

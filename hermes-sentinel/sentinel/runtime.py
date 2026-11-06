@@ -18,8 +18,8 @@ from .alerts import Alerter, RouteBook
 from .budget import Budget
 from .config import SentinelConfig
 from .engine import Engine, EngineSettings
-from .judge import Judge
-from .store import Store, StoreError
+from .storage import Store, StoreError
+from .vision import Judge
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,8 @@ def active_sentinel() -> Sentinel | None:
 
 def register_aux_tasks(ctx: Any) -> list[str]:
     """Register the plugin's two LLM tasks (vision judge, rule compiler). Never raises."""
-    from .judge import VISION_TASK, VISION_TASK_INFO
     from .rules import RULES_TASK, RULES_TASK_INFO
+    from .vision import VISION_TASK, VISION_TASK_INFO
 
     done = []
     for key, info in ((VISION_TASK, VISION_TASK_INFO), (RULES_TASK, RULES_TASK_INFO)):
@@ -110,8 +110,11 @@ class Sentinel:
         self._pruning = False
         self.judge = Judge(lambda: getattr(ctx, "llm", None), clock=clock)
         self.alerter = Alerter(
-            ctx, clock=clock, include_media=self.config.alert_snapshots,
-            global_per_hour=ALERTS_PER_HOUR, notices_per_hour=NOTICES_PER_HOUR,
+            ctx,
+            clock=clock,
+            include_media=self.config.alert_snapshots,
+            global_per_hour=ALERTS_PER_HOUR,
+            notices_per_hour=NOTICES_PER_HOUR,
         )
 
     def _default_store(self, cfg: SentinelConfig) -> Store:

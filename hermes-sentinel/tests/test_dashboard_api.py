@@ -87,8 +87,9 @@ def _watch(rig, **args):
 def _event(rig, rule_id, caption="someone at the desk", snapshot=True, **kw):
     store = rig.sentinel.store
     path = store.save_snapshot(_jpeg(), rule_id=rule_id) if snapshot else None
-    return store.add_event(rule_id, caption=caption, confidence=0.91, source=CAM,
-                           snapshot_path=path, **kw)
+    return store.add_event(
+        rule_id, caption=caption, confidence=0.91, source=CAM, snapshot_path=path, **kw
+    )
 
 
 def _no_secrets(resp):
@@ -109,11 +110,17 @@ def test_manifest_declares_the_api():
 def test_router_exports_every_contract_route(api):
     routes = {(m, r.path) for r in api.router.routes for m in r.methods}
     assert routes >= {
-        ("GET", "/status"), ("GET", "/sources"), ("GET", "/frame/{source_key:path}"),
-        ("GET", "/rules"), ("POST", "/rules/{rule_id}/pause"),
-        ("POST", "/rules/{rule_id}/resume"), ("DELETE", "/rules/{rule_id}"),
-        ("GET", "/events"), ("GET", "/events/{event_id}/snapshot"),
-        ("POST", "/events/{event_id}/feedback"), ("POST", "/watch"),
+        ("GET", "/status"),
+        ("GET", "/sources"),
+        ("GET", "/frame/{source_key:path}"),
+        ("GET", "/rules"),
+        ("POST", "/rules/{rule_id}/pause"),
+        ("POST", "/rules/{rule_id}/resume"),
+        ("DELETE", "/rules/{rule_id}"),
+        ("GET", "/events"),
+        ("GET", "/events/{event_id}/snapshot"),
+        ("POST", "/events/{event_id}/feedback"),
+        ("POST", "/watch"),
     }
 
 
@@ -209,7 +216,8 @@ def test_sources_when_engine_not_running(client, rig):
 def test_sources_mask_credentials(client, rig):
     rig.sources[RTSP] = FakeSource(build_scene("static_scene", n_frames=5), rig.clock, loop=True)
     rig.sentinel.store.upsert_rule(
-        rig.sentinel.store.get_rule(_watch(rig)).with_changes(source=RTSP))
+        rig.sentinel.store.get_rule(_watch(rig)).with_changes(source=RTSP)
+    )
     resp = client.get(f"{BASE}/sources")
     assert resp.status_code == 200 and resp.json()
     _no_secrets(resp)
@@ -277,8 +285,18 @@ def test_rules_list_shape(client, rig):
     rule = _watch(rig)
     rig.pump(1)
     [item] = client.get(f"{BASE}/rules").json()
-    assert set(item) == {"id", "text", "source", "mode", "status", "paused", "last_event_at",
-                         "vision_calls_hour", "cooldown_s", "hold_s"}
+    assert set(item) == {
+        "id",
+        "text",
+        "source",
+        "mode",
+        "status",
+        "paused",
+        "last_event_at",
+        "vision_calls_hour",
+        "cooldown_s",
+        "hold_s",
+    }
     assert item["id"] == rule and item["source"] == CAM and item["paused"] is False
     assert item["last_event_at"] is None and item["vision_calls_hour"] >= 0
     assert item["text"] and item["mode"] in ("trigger", "condition", "absence")
@@ -312,9 +330,14 @@ def test_delete_keeps_events(client, rig):
     assert len(client.get(f"{BASE}/events").json()) == 1
 
 
-@pytest.mark.parametrize("method,path", [
-    ("post", "/rules/nope/pause"), ("post", "/rules/nope/resume"), ("delete", "/rules/nope"),
-])
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("post", "/rules/nope/pause"),
+        ("post", "/rules/nope/resume"),
+        ("delete", "/rules/nope"),
+    ],
+)
 def test_unknown_rule_is_404(client, method, path):
     resp = getattr(client, method)(BASE + path)
     assert resp.status_code == 404 and resp.json()["ok"] is False
@@ -330,7 +353,8 @@ def test_dashboard_owns_rules_made_in_messaging_chats(client, rig):
     rule = _watch(rig)
     spec = rig.sentinel.store.get_rule(rule)
     rig.sentinel.store.upsert_rule(
-        spec.with_changes(origin={"platform": "telegram", "chat_id": "42"}))
+        spec.with_changes(origin={"platform": "telegram", "chat_id": "42"})
+    )
     assert [r["id"] for r in client.get(f"{BASE}/rules").json()] == [rule]
     assert client.post(f"{BASE}/rules/{rule}/pause").status_code == 200
 
@@ -345,8 +369,16 @@ def test_events_list_shape_and_order(client, rig):
     items = client.get(f"{BASE}/events").json()
     assert [i["id"] for i in items] == [second.id, first.id]
     top = items[0]
-    assert set(top) == {"id", "rule_id", "rule_text", "ts", "caption", "confidence",
-                        "feedback", "has_snapshot"}
+    assert set(top) == {
+        "id",
+        "rule_id",
+        "rule_text",
+        "ts",
+        "caption",
+        "confidence",
+        "feedback",
+        "has_snapshot",
+    }
     assert top["has_snapshot"] is True and items[1]["has_snapshot"] is False
     assert top["feedback"] is None and top["rule_text"] and top["confidence"] == 0.91
 
@@ -363,9 +395,16 @@ def test_events_filters_and_limits(client, rig):
     assert client.get(f"{BASE}/events?since=2999-01-01T00:00:00Z").json() == []
 
 
-@pytest.mark.parametrize("query", [
-    "limit=abc", "limit=0", "limit=-1", "rule_id=bad id!", "since=whenever",
-])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "limit=abc",
+        "limit=0",
+        "limit=-1",
+        "rule_id=bad id!",
+        "since=whenever",
+    ],
+)
 def test_events_bad_params_are_400(client, rig, query):
     resp = client.get(f"{BASE}/events?{query}")
     assert resp.status_code == 400 and resp.json()["ok"] is False
@@ -429,8 +468,9 @@ def test_feedback_unknown_event(client, rig):
 
 
 def test_watch_with_recipe(client, rig):
-    resp = client.post(f"{BASE}/watch", json={"text": "my desk", "source": CAM,
-                                                "recipe": "desk-intruder"})
+    resp = client.post(
+        f"{BASE}/watch", json={"text": "my desk", "source": CAM, "recipe": "desk-intruder"}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True and body["rule"]["source"] == CAM
@@ -441,19 +481,25 @@ def test_watch_with_recipe(client, rig):
 
 def test_watch_plain_text_uses_compiler(client, rig):
     rig.ctx.llm.respond(
-        lambda call: {"question": "Is a mug on the desk?", "mode": "absence"},
-        task="sentinel_rules")
-    resp = client.post(f"{BASE}/watch", json={"text": "tell me if the mug is gone",
-                                                "source": CAM})
+        lambda call: {"question": "Is a mug on the desk?", "mode": "absence"}, task="sentinel_rules"
+    )
+    resp = client.post(f"{BASE}/watch", json={"text": "tell me if the mug is gone", "source": CAM})
     assert resp.status_code == 200, resp.text
     assert resp.json()["rule"]["text"]
 
 
-@pytest.mark.parametrize("payload,status", [
-    ({}, 400), ({"text": ""}, 400), ({"text": 5}, 400), ({"text": "x" * 2500}, 400),
-    ({"text": "x", "recipe": "no-such-recipe"}, 400),
-    ({"text": "x", "source": "bogus://"}, 400), ([], 400),
-])
+@pytest.mark.parametrize(
+    "payload,status",
+    [
+        ({}, 400),
+        ({"text": ""}, 400),
+        ({"text": 5}, 400),
+        ({"text": "x" * 2500}, 400),
+        ({"text": "x", "recipe": "no-such-recipe"}, 400),
+        ({"text": "x", "source": "bogus://"}, 400),
+        ([], 400),
+    ],
+)
 def test_watch_validation(client, rig, payload, status):
     resp = client.post(f"{BASE}/watch", json=payload)
     assert resp.status_code == status and resp.json()["ok"] is False
@@ -564,13 +610,16 @@ def test_not_loaded_note_names_the_hosting_process(idle_client):
 # --------------------------------------------------------------------------- masking shapes
 
 
-@pytest.mark.parametrize("spec,secret", [
-    ("snapshot:https://u:pw@h.example/x.jpg", "pw"),
-    ("https://tok123@h.example/x", "tok123"),
-    ("folder:https://tok123@h.example/x", "tok123"),
-    ("rtsp://h.example/live/SECRETPATH", "SECRETPATH"),
-    ("rtsp://h.example:554/Streaming/s3cr3t-tok/ch1?x=1", "s3cr3t-tok"),
-])
+@pytest.mark.parametrize(
+    "spec,secret",
+    [
+        ("snapshot:https://u:pw@h.example/x.jpg", "pw"),
+        ("https://tok123@h.example/x", "tok123"),
+        ("folder:https://tok123@h.example/x", "tok123"),
+        ("rtsp://h.example/live/SECRETPATH", "SECRETPATH"),
+        ("rtsp://h.example:554/Streaming/s3cr3t-tok/ch1?x=1", "s3cr3t-tok"),
+    ],
+)
 def test_mask_hides_credential_shapes(api, rig, spec, secret):
     out = api._mask(spec)
     assert secret not in out

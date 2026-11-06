@@ -19,8 +19,9 @@ CAM = "camera:7"
 def rig(fake_ctx):
     r = Rig(fake_ctx)
     r.sources[CAM] = FakeSource(build_scene("static_scene", n_frames=20), r.clock, loop=True)
-    fake_ctx.llm.respond(lambda call: verdict(True, 0.85, "someone at the desk"),
-                         task="sentinel_vision")
+    fake_ctx.llm.respond(
+        lambda call: verdict(True, 0.85, "someone at the desk"), task="sentinel_vision"
+    )
     return r
 
 
@@ -85,8 +86,7 @@ def test_help_unknown_and_errors(rig, monkeypatch):
 
 def test_command_accepts_session_keywords(rig):
     handler = rig.ctx.commands["sentinel"]["handler"]
-    assert "idle" in handler("status", session_id="s", session_key="k", platform="cli",
-                             source=None)
+    assert "idle" in handler("status", session_id="s", session_key="k", platform="cli", source=None)
 
 
 # --------------------------------------------------------------------------- runtime
@@ -137,10 +137,19 @@ def test_boot_starts_only_with_enabled_rules(fake_ctx):
 
 def test_register_wires_tools_tasks_command_and_unload(loaded_plugin):
     ctx = loaded_plugin.ctx
-    assert sorted(ctx.tools) == sorted([
-        "sentinel_sources", "sentinel_watch", "sentinel_rules", "sentinel_update",
-        "sentinel_look", "sentinel_events", "sentinel_feedback", "sentinel_teach",
-        "sentinel_setup_check"])
+    assert sorted(ctx.tools) == sorted(
+        [
+            "sentinel_sources",
+            "sentinel_watch",
+            "sentinel_rules",
+            "sentinel_update",
+            "sentinel_look",
+            "sentinel_events",
+            "sentinel_feedback",
+            "sentinel_teach",
+            "sentinel_setup_check",
+        ]
+    )
     assert set(ctx.aux_tasks) == {"sentinel_vision", "sentinel_rules"}
     assert ctx.commands["sentinel"]["args_hint"].startswith("[setup|status")
     engine_store = loaded_plugin.ctx.run_command("sentinel", "status")
@@ -150,13 +159,14 @@ def test_register_wires_tools_tasks_command_and_unload(loaded_plugin):
     assert list(ctx.warnings) == []
 
 
-def test_register_boots_watcher_for_existing_rules_and_unload_stops_it(shim_binding,
-                                                                       tmp_path, monkeypatch):
+def test_register_boots_watcher_for_existing_rules_and_unload_stops_it(
+    shim_binding, tmp_path, monkeypatch
+):
     from harness.plugin_loader import plugin_module
 
     monkeypatch.setattr(plugin_module("sentinel.runtime"), "BOOT_DELAY_SECONDS", 0.0)
 
-    store_mod = plugin_module("sentinel.store")
+    store_mod = plugin_module("sentinel.storage")
     rules = plugin_module("sentinel.rules")
     folder = tmp_path / "frames"
     folder.mkdir()
@@ -205,9 +215,13 @@ def test_here_routes_messaging_alerts(telegram_ctx):
     rule_id = out["rule"]["rule_id"]
 
     src = SimpleNamespace(platform="telegram", chat_id="42", user_id="7")
-    assert "Alerts for " + rule_id in handler("here", session_id="s-tg",
-                                             session_key="agent:main:telegram:dm:42",
-                                             platform="telegram", source=src)
+    assert "Alerts for " + rule_id in handler(
+        "here",
+        session_id="s-tg",
+        session_key="agent:main:telegram:dm:42",
+        platform="telegram",
+        source=src,
+    )
     origin = rig.sentinel.store.get_rule(rule_id).origin
     assert origin["session_key"] == "agent:main:telegram:dm:42" and origin["chat_id"] == "42"
 

@@ -147,9 +147,7 @@ def _parse_commands(root: Path) -> frozenset[str]:
             if kw.arg == "name" and isinstance(kw.value, ast.Constant):
                 names.add(str(kw.value.value))
             if kw.arg == "aliases" and isinstance(kw.value, (ast.Tuple, ast.List)):
-                names.update(
-                    str(e.value) for e in kw.value.elts if isinstance(e, ast.Constant)
-                )
+                names.update(str(e.value) for e in kw.value.elts if isinstance(e, ast.Constant))
     if not names:
         raise ValueError("COMMAND_REGISTRY: no CommandDef entries found")
     return frozenset(n.lower() for n in names)

@@ -61,9 +61,9 @@ from typing import Any
 from .alerts import Alerter
 from .budget import Budget
 from .config import SentinelConfig
-from .judge import Example, Judge, Verdict, encode_jpeg
 from .rules import RuleSpec, RuleState, RuleStateMachine
 from .sources import SourceError, SourceNotReady, SourceSpec, open_source, redact_url
+from .vision import Example, Judge, Verdict, encode_jpeg
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +96,19 @@ class EngineSettings:
     judge_error_rearm: float = 600.0
 
     def __post_init__(self) -> None:
-        for name in ("capture_interval", "confirm_interval", "backoff_initial", "backoff_max",
-                     "judge_backoff_initial", "judge_backoff_max", "scheduler_interval",
-                     "sync_interval", "stop_timeout", "max_frame_age", "judge_error_rearm"):
+        for name in (
+            "capture_interval",
+            "confirm_interval",
+            "backoff_initial",
+            "backoff_max",
+            "judge_backoff_initial",
+            "judge_backoff_max",
+            "scheduler_interval",
+            "sync_interval",
+            "stop_timeout",
+            "max_frame_age",
+            "judge_error_rearm",
+        ):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be a positive number")
@@ -403,8 +413,10 @@ class Engine:
             if thread is not None and thread is not current and thread.is_alive():
                 # Stuck in open()/read(): close from a helper so stop() never blocks on it.
                 threading.Thread(
-                    target=self._close_worker_source, args=(worker,),
-                    name="sentinel-close", daemon=True,
+                    target=self._close_worker_source,
+                    args=(worker,),
+                    name="sentinel-close",
+                    daemon=True,
                 ).start()
             else:
                 self._close_worker_source(worker)
@@ -422,7 +434,7 @@ class Engine:
     # ---- rules ------------------------------------------------------------------------
 
     def _default_gate(self, spec: RuleSpec) -> Any:
-        from .gate import ChangeGate, GateConfig  # numpy is only needed once frames flow
+        from .vision.gate import ChangeGate, GateConfig  # numpy is only needed once frames flow
 
         # Idle ticks are for condition/absence rules. A trigger rule needs real changes (plus
         # the start-up look), so its safety-net tick is stretched to TRIGGER_IDLE_MIN_SECONDS.
@@ -504,8 +516,10 @@ class Engine:
                 self.remove_rule(rule_id)
             for spec in specs.values():
                 rt = self._rules.get(spec.id)
-                if rt is None or rt.spec.updated_at != spec.updated_at or (
-                    rt.spec.to_dict() != spec.to_dict()
+                if (
+                    rt is None
+                    or rt.spec.updated_at != spec.updated_at
+                    or (rt.spec.to_dict() != spec.to_dict())
                 ):
                     self._install(spec)
 
@@ -547,8 +561,10 @@ class Engine:
         # visible to open(); rules started at boot or by the scheduler have none.
         ctx = contextvars.copy_context()
         worker.thread = threading.Thread(
-            target=ctx.run, args=(self._capture_loop, worker),
-            name=f"sentinel-capture-{worker.key}"[:60], daemon=True,
+            target=ctx.run,
+            args=(self._capture_loop, worker),
+            name=f"sentinel-capture-{worker.key}"[:60],
+            daemon=True,
         )
         worker.thread.start()
 
@@ -704,8 +720,9 @@ class Engine:
             self.settings.backoff_initial * (2 ** min(worker.failures - 1, 30)),
         )
         worker.next_attempt = now + delay
-        logger.info("sentinel: source %s failed (%s); retry in %.0fs", worker.key,
-                    worker.last_error, delay)
+        logger.info(
+            "sentinel: source %s failed (%s); retry in %.0fs", worker.key, worker.last_error, delay
+        )
         if worker.offline_notified or now - worker.offline_since < self.settings.offline_grace:
             return None
         worker.offline_notified = True
@@ -924,7 +941,10 @@ class Engine:
             rt.budget_skips += 1
             return
         verdict = self.judge.judge(
-            job.frame, spec.question, rule_id=spec.id, roi=spec.roi,
+            job.frame,
+            spec.question,
+            rule_id=spec.id,
+            roi=spec.roi,
             examples=self._load_examples(spec.id),
         )
         if self._stop.is_set():
@@ -990,17 +1010,28 @@ class Engine:
         caption = verdict.caption or f"Rule matched: {spec.question}"
         try:
             event = self.store.add_event(
-                spec.id, caption=caption, reason=verdict.reason, confidence=verdict.confidence,
-                source=source_name, snapshot_path=snapshot, ts=wall,
+                spec.id,
+                caption=caption,
+                reason=verdict.reason,
+                confidence=verdict.confidence,
+                source=source_name,
+                snapshot_path=snapshot,
+                ts=wall,
             )
         except Exception as exc:  # noqa: BLE001 - still alert even if the history write fails
             logger.warning("sentinel: could not store event: %s", exc)
-            from .store import EventRecord, to_iso
+            from .storage import EventRecord, to_iso
 
             event = EventRecord(
-                id=0, rule_id=spec.id, ts=to_iso(wall), caption=caption, reason=verdict.reason,
-                confidence=verdict.confidence, source=source_name,
-                snapshot_path=str(snapshot) if snapshot else None, feedback=None,
+                id=0,
+                rule_id=spec.id,
+                ts=to_iso(wall),
+                caption=caption,
+                reason=verdict.reason,
+                confidence=verdict.confidence,
+                source=source_name,
+                snapshot_path=str(snapshot) if snapshot else None,
+                feedback=None,
             )
         rt.last_event_id = event.id
         self._fired += 1
@@ -1094,16 +1125,16 @@ class Engine:
         if not self._reserve_budget(spec):
             return {"ok": False, "error": self.budget.status().describe()}
         verdict = self.judge.judge(
-            frame, spec.question, rule_id=spec.id, roi=spec.roi,
+            frame,
+            spec.question,
+            rule_id=spec.id,
+            roi=spec.roi,
             examples=self._load_examples(spec.id),
         )
-        out = {"ok": verdict.ok, "rule_id": spec.id, "question": spec.question,
-               **verdict.to_dict()}
+        out = {"ok": verdict.ok, "rule_id": spec.id, "question": spec.question, **verdict.to_dict()}
         if verdict.ok:
             evidence = (not verdict.match) if spec.mode == "absence" else verdict.match
-            out["would_count"] = bool(
-                evidence and verdict.confidence >= spec.confidence_threshold
-            )
+            out["would_count"] = bool(evidence and verdict.confidence >= spec.confidence_threshold)
         return out
 
     # ---- status -----------------------------------------------------------------------
@@ -1129,9 +1160,9 @@ class Engine:
             "dropped": rt.dropped,
             "last_verdict": verdict.to_dict() if verdict is not None else None,
             "last_checked": (
-                datetime.fromtimestamp(rt.last_judged_at).astimezone().isoformat(
-                    timespec="seconds")
-                if rt.last_judged_at else None
+                datetime.fromtimestamp(rt.last_judged_at).astimezone().isoformat(timespec="seconds")
+                if rt.last_judged_at
+                else None
             ),
             "last_reason": rt.last_reason,
             "judging_paused_for": max(0.0, rt.judge_backoff_until - self._clock()),

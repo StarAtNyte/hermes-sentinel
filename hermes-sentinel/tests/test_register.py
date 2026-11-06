@@ -142,8 +142,9 @@ def test_register_raises_no_host_warnings(registered):
 def test_register_is_repeatable_on_a_fresh_ctx(registered):
     """A force-reload registers again on a new context; results must be identical."""
     ctx, _ = registered
-    again = FakeCtx(plugin_id=PLUGIN_NAME, config=dict(ctx.config), entry=ctx.entry,
-                    source=ctx.source)
+    again = FakeCtx(
+        plugin_id=PLUGIN_NAME, config=dict(ctx.config), entry=ctx.entry, source=ctx.source
+    )
     try:
         plugin_package().register(again)
         assert again.registered_capabilities() == ctx.registered_capabilities()
@@ -173,5 +174,9 @@ def test_declared_secret_names_helper():
         },
     }
     assert _declared_secret_names(manifest) == {
-        "A_KEY", "B_KEY", "HERMES_SENTINEL_API_KEY", "CUSTOM_TOKEN", "HERMES_SENTINEL_PW",
+        "A_KEY",
+        "B_KEY",
+        "HERMES_SENTINEL_API_KEY",
+        "CUSTOM_TOKEN",
+        "HERMES_SENTINEL_PW",
     }

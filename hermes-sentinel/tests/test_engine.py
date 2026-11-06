@@ -22,7 +22,7 @@ budget_mod = plugin_module("sentinel.budget")
 config_mod = plugin_module("sentinel.config")
 judge_mod = plugin_module("sentinel.judge")
 rules = plugin_module("sentinel.rules")
-store_mod = plugin_module("sentinel.store")
+store_mod = plugin_module("sentinel.storage")
 sources_mod = plugin_module("sentinel.sources")
 
 Verdict = judge_mod.Verdict
@@ -91,16 +91,33 @@ class Harness:
         self.gates = {}
         self.sources = {}
         self.alerter = alerts.Alerter(ctx, clock=self.clock, per_rule_min_interval=0)
-        self.budget = budget_mod.Budget(self.store, per_hour=per_hour, per_day=None,
-                                        clock=lambda: self.wall[0])
+        self.budget = budget_mod.Budget(
+            self.store, per_hour=per_hour, per_day=None, clock=lambda: self.wall[0]
+        )
         self.engine = engine_mod.Engine(
-            store=self.store, judge=self.judge, alerter=self.alerter, budget=self.budget,
+            store=self.store,
+            judge=self.judge,
+            alerter=self.alerter,
+            budget=self.budget,
             config=config or config_mod.SentinelConfig(),
-            settings=settings or engine_mod.EngineSettings(
-                confirm_interval=1.0, offline_grace=3.0, backoff_initial=1.0, backoff_max=8.0,
-                judge_backoff_initial=5.0, judge_backoff_max=20.0, queue_size=2),
-            source_factory=self.factory, source_key=lambda s: s, gate_factory=self.gate,
-            clock=self.clock, wall_clock=lambda: self.wall[0], threaded=False, **engine_kw)
+            settings=settings
+            or engine_mod.EngineSettings(
+                confirm_interval=1.0,
+                offline_grace=3.0,
+                backoff_initial=1.0,
+                backoff_max=8.0,
+                judge_backoff_initial=5.0,
+                judge_backoff_max=20.0,
+                queue_size=2,
+            ),
+            source_factory=self.factory,
+            source_key=lambda s: s,
+            gate_factory=self.gate,
+            clock=self.clock,
+            wall_clock=lambda: self.wall[0],
+            threaded=False,
+            **engine_kw,
+        )
 
     def factory(self, spec):
         src = self.sources.get(spec)
@@ -129,8 +146,11 @@ class Harness:
         return out
 
     def notices(self, needle=""):
-        return [m.content for m in self.ctx.injected
-                if m.content.startswith("[Sentinel notice]") and needle in m.content]
+        return [
+            m.content
+            for m in self.ctx.injected
+            if m.content.startswith("[Sentinel notice]") and needle in m.content
+        ]
 
 
 @pytest.fixture
@@ -546,11 +566,17 @@ def test_threaded_lifecycle_and_idempotent_stop(fake_ctx):
     store = store_mod.Store()
     try:
         eng = engine_mod.Engine(
-            store=store, judge=StubJudge(), alerter=alerts.Alerter(fake_ctx),
-            budget=budget_mod.Budget(store), config=config_mod.SentinelConfig(),
-            settings=engine_mod.EngineSettings(capture_interval=0.01, scheduler_interval=0.02,
-                                               sync_interval=0.05),
-            source_factory=lambda s: src, source_key=lambda s: s, gate_factory=StubGate,
+            store=store,
+            judge=StubJudge(),
+            alerter=alerts.Alerter(fake_ctx),
+            budget=budget_mod.Budget(store),
+            config=config_mod.SentinelConfig(),
+            settings=engine_mod.EngineSettings(
+                capture_interval=0.01, scheduler_interval=0.02, sync_interval=0.05
+            ),
+            source_factory=lambda s: src,
+            source_key=lambda s: s,
+            gate_factory=StubGate,
         )
         spec = rules.RuleSpec(question="q?", source="cam", id="t1").validate()
         store.upsert_rule(spec)

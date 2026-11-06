@@ -184,14 +184,16 @@ class Budget:
             day_cap=day_cap,
             exhausted=exhausted,
             retry_after_seconds=(
-                self._retry_after(now, hour_used, hour_cap, day_used, day_cap)
-                if exhausted
-                else 0.0
+                self._retry_after(now, hour_used, hour_cap, day_used, day_cap) if exhausted else 0.0
             ),
         )
 
     def _retry_after(
-        self, now: float, hour_used: int, hour_cap: int | None, day_used: int,
+        self,
+        now: float,
+        hour_used: int,
+        hour_cap: int | None,
+        day_used: int,
         day_cap: int | None,
     ) -> float:
         """Seconds until every exhausted cap has room again."""

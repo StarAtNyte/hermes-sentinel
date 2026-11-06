@@ -122,8 +122,11 @@ class Rig:
             engine.maintenance()
 
     def notices(self, needle: str = "") -> list[str]:
-        return [m.content for m in self.ctx.injected
-                if m.content.startswith("[Sentinel notice]") and needle in m.content]
+        return [
+            m.content
+            for m in self.ctx.injected
+            if m.content.startswith("[Sentinel notice]") and needle in m.content
+        ]
 
     def alerts(self) -> list[str]:
         return [m.content for m in self.ctx.injected if m.content.startswith("[Sentinel alert]")]

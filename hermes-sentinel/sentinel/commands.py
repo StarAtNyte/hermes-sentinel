@@ -85,16 +85,23 @@ class SentinelCommand:
 
     # -- subcommands
 
-    def here(self, target: str, route: dict[str, str], kwargs: dict[str, Any],
-             caller: dict[str, Any] | None = None) -> str:
+    def here(
+        self,
+        target: str,
+        route: dict[str, str],
+        kwargs: dict[str, Any],
+        caller: dict[str, Any] | None = None,
+    ) -> str:
         """Send alerts of this session's rules (or ``<id>`` / ``all``) to this chat.
 
         In a messaging chat only rules that already belong to that chat can be moved; a
         local session may move any rule.
         """
         if not route.get("session_key"):
-            return ("This session did not identify itself (no session key), so alerts cannot "
-                    "be routed here.")
+            return (
+                "This session did not identify itself (no session key), so alerts cannot "
+                "be routed here."
+            )
         caller = caller if caller is not None else {}
         session_id = str(kwargs.get("session_id") or route.get("session_key") or "")
         rules = self._visible_rules(caller)
@@ -114,8 +121,10 @@ class SentinelCommand:
                 engine.update_rule(saved)
             bound.append(saved.id)
         if not bound:
-            return ("Alerts for rules created in this session from now on will come here. "
-                    "Use /sentinel here all to move existing rules too.")
+            return (
+                "Alerts for rules created in this session from now on will come here. "
+                "Use /sentinel here all to move existing rules too."
+            )
         return f"Alerts for {', '.join(bound)} will now come to this chat."
 
     def setup(self, kwargs: dict[str, Any]) -> str:
@@ -148,22 +157,28 @@ class SentinelCommand:
                 if scoped:
                     src = {**src, "rules": [r for r in src["rules"] if r in visible]}
                 extra = f" ({src['error']})" if src["error"] else ""
-                lines.append(f"  source {src['source']}: {_yesno(src['online'])}{extra}, "
-                             f"{src['frames']} frames, rules {', '.join(src['rules'])}")
+                lines.append(
+                    f"  source {src['source']}: {_yesno(src['online'])}{extra}, "
+                    f"{src['frames']} frames, rules {', '.join(src['rules'])}"
+                )
             alerts = st["alerts"]
             if not scoped:
-                lines.append(f"  events fired: {st['events_fired']}; alerts sent "
-                             f"{alerts['sent']}, rate-limited {alerts['suppressed']}, "
-                             f"failed {alerts['failed']}")
+                lines.append(
+                    f"  events fired: {st['events_fired']}; alerts sent "
+                    f"{alerts['sent']}, rate-limited {alerts['suppressed']}, "
+                    f"failed {alerts['failed']}"
+                )
             if st["last_error"] and not scoped:
                 lines.append(f"  last error: {st['last_error']}")
         blocked = self.s.alerter.delivery_blocked()
         if blocked:
             lines.append("  " + blocked.replace("\n", "\n  "))
         else:
-            lines.append("  Alerts are injected into the chat; outside the classic CLI Hermes "
-                         "needs this in config.yaml (off by default):\n  "
-                         + GATEWAY_INJECTION_YAML.replace("\n", "\n  "))
+            lines.append(
+                "  Alerts are injected into the chat; outside the classic CLI Hermes "
+                "needs this in config.yaml (off by default):\n  "
+                + GATEWAY_INJECTION_YAML.replace("\n", "\n  ")
+            )
         try:
             lines.append("  " + self.s.budget.status().describe())
         except Exception as exc:  # noqa: BLE001
@@ -175,8 +190,10 @@ class SentinelCommand:
     def list_rules(self, caller: dict[str, Any] | None = None) -> str:
         rules = self._visible_rules(caller or {})
         if not rules:
-            return "No watch rules yet. Ask Hermes to watch something, e.g. \"watch my webcam " \
-                   "and tell me if someone takes my mug\"."
+            return (
+                'No watch rules yet. Ask Hermes to watch something, e.g. "watch my webcam '
+                'and tell me if someone takes my mug".'
+            )
         engine = self.s.engine_if_built
         lines = []
         for spec in rules:
@@ -184,8 +201,9 @@ class SentinelCommand:
             state = "paused" if not spec.enabled else (status or {}).get("state", "not running")
             last = self.s.store.last_event(spec.id)
             last_text = f", last event #{last.id} {last.caption[:60]}" if last else ""
-            lines.append(f"{spec.id} [{state}] {spec.source}: {spec.text or spec.question}"
-                         f"{last_text}")
+            lines.append(
+                f"{spec.id} [{state}] {spec.source}: {spec.text or spec.question}{last_text}"
+            )
         return "\n".join(lines)
 
     def set_enabled(self, rule_id: str, enabled: bool, caller: dict[str, Any] | None = None) -> str:
@@ -214,8 +232,10 @@ class SentinelCommand:
             return f"Test of {rule_id} failed: {result.get('error')}"
         answer = "yes" if result["match"] else "no"
         counts = "would count as evidence" if result.get("would_count") else "would not count"
-        return (f"{rule_id}: {result['question']} -> {answer} (confidence "
-                f"{result['confidence']:.2f}; {counts}). {result.get('caption') or ''}").strip()
+        return (
+            f"{rule_id}: {result['question']} -> {answer} (confidence "
+            f"{result['confidence']:.2f}; {counts}). {result.get('caption') or ''}"
+        ).strip()
 
     def budget(self) -> str:
         return self.s.budget.status().describe()

@@ -83,7 +83,10 @@ def test_get_secret_reads_bound_dict_and_records(shim_binding):
     assert get_secret("MISSING", "d") == "d"
     assert get_secret_str("MISSING") == ""
     assert shim_binding.secrets_read == [
-        "SENTINEL_STREAM_PASSWORD", "MISSING", "MISSING", "MISSING",
+        "SENTINEL_STREAM_PASSWORD",
+        "MISSING",
+        "MISSING",
+        "MISSING",
     ]
     shim_binding.secrets["NEW"] = "v"
     assert get_secret("NEW") == "v"

@@ -29,8 +29,9 @@ IMG = PluginLlmImageInput(data=b"\xff\xd8" + b"0" * 98, mime_type="image/jpeg")
 
 
 def _ask(ctx: FakeCtx, **overrides):
-    kwargs = dict(instructions="is the mug there?", input=[IMG], json_schema=VERDICT,
-                  purpose="judge")
+    kwargs = dict(
+        instructions="is the mug there?", input=[IMG], json_schema=VERDICT, purpose="judge"
+    )
     kwargs.update(overrides)
     return ctx.llm.complete_structured(**kwargs)
 
@@ -45,8 +46,13 @@ def test_scripted_dict_is_parsed_and_images_recorded(fake_ctx: FakeCtx):
     assert result.parsed == {"match": True, "confidence": 0.9}
     assert result.content_type == "json"
     assert result.agent_id == "default"
-    assert result.audit == {"plugin_id": "hermes-sentinel", "purpose": "judge", "profile": "",
-                            "task": "", "schema_name": ""}
+    assert result.audit == {
+        "plugin_id": "hermes-sentinel",
+        "purpose": "judge",
+        "profile": "",
+        "task": "",
+        "schema_name": "",
+    }
     call = fake_ctx.llm.calls[0]
     assert call.image_sizes == [100]
     assert [b.type for b in call.blocks] == ["image", "text"]
@@ -121,8 +127,9 @@ def test_complete_text(fake_ctx: FakeCtx):
 
 async def test_async_variants(fake_ctx: FakeCtx):
     fake_ctx.llm.script({"match": True, "confidence": 0.5}, "plain")
-    assert (await fake_ctx.llm.acomplete_structured(
-        instructions="q", input=[IMG], json_schema=VERDICT)).parsed["match"] is True
+    assert (
+        await fake_ctx.llm.acomplete_structured(instructions="q", input=[IMG], json_schema=VERDICT)
+    ).parsed["match"] is True
     assert (await fake_ctx.llm.acomplete([{"role": "user", "content": "x"}])).text == "plain"
     with pytest.raises(ValueError):
         await fake_ctx.llm.acomplete_structured(instructions="", input=[IMG])
@@ -184,8 +191,9 @@ def test_unregistered_task_rejected_registered_task_allowed(fake_ctx: FakeCtx):
     fake_ctx.llm.respond(lambda call: {"match": True, "confidence": 1})
     with pytest.raises(PluginLlmTrustError, match="did not register|registered itself"):
         _ask(fake_ctx, task="sentinel_vision")
-    fake_ctx.register_auxiliary_task("sentinel_vision", display_name="Sentinel vision",
-                                     description="frame judge")
+    fake_ctx.register_auxiliary_task(
+        "sentinel_vision", display_name="Sentinel vision", description="frame judge"
+    )
     result = _ask(fake_ctx, task="sentinel_vision")
     assert result.audit["task"] == "sentinel_vision"
     assert [m for m, _ in fake_ctx.llm.rejected] == ["complete_structured"]

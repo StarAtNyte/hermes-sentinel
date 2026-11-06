@@ -18,20 +18,35 @@ def _write(root: Path, rel: str, text: str) -> None:
 @pytest.fixture
 def mini_checkout(tmp_path: Path) -> Path:
     root = tmp_path / "hermes-agent"
-    _write(root, "hermes_cli/plugins.py",
-           'VALID_HOOKS: set[str] = {"pre_tool_call", "post_tool_call"}\n')
-    _write(root, "hermes_cli/middleware.py",
-           'A = "tool_request"\nB = "llm_request"\nVALID_MIDDLEWARE: set[str] = {A, B}\n')
-    _write(root, "hermes_cli/commands.py",
-           "COMMAND_REGISTRY: list = [\n"
-           '    CommandDef("help", "Help", "Info", aliases=("h", "?")),\n'
-           '    CommandDef(name="New", description="d", category="Session"),\n'
-           "]\n")
-    _write(root, "hermes_cli/main_provider_setup.py",
-           '_AUX_TASKS = [("vision", "Vision", "v"), ("compression", "C", "c")]\n')
-    _write(root, "tools/file_tools.py",
-           'registry.register(name="read_file", toolset="file", schema={}, handler=None)\n'
-           'other.register(name="not_a_tool")\n')
+    _write(
+        root,
+        "hermes_cli/plugins.py",
+        'VALID_HOOKS: set[str] = {"pre_tool_call", "post_tool_call"}\n',
+    )
+    _write(
+        root,
+        "hermes_cli/middleware.py",
+        'A = "tool_request"\nB = "llm_request"\nVALID_MIDDLEWARE: set[str] = {A, B}\n',
+    )
+    _write(
+        root,
+        "hermes_cli/commands.py",
+        "COMMAND_REGISTRY: list = [\n"
+        '    CommandDef("help", "Help", "Info", aliases=("h", "?")),\n'
+        '    CommandDef(name="New", description="d", category="Session"),\n'
+        "]\n",
+    )
+    _write(
+        root,
+        "hermes_cli/main_provider_setup.py",
+        '_AUX_TASKS = [("vision", "Vision", "v"), ("compression", "C", "c")]\n',
+    )
+    _write(
+        root,
+        "tools/file_tools.py",
+        'registry.register(name="read_file", toolset="file", schema={}, handler=None)\n'
+        'other.register(name="not_a_tool")\n',
+    )
     _write(root, "tools/broken.py", "def (:\n")
     return root
 
@@ -65,8 +80,7 @@ def test_hermes_agent_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 def test_snapshot_sanity():
     assert {"pre_tool_call", "post_tool_call", "on_session_start"} <= SNAPSHOT.hooks
-    assert SNAPSHOT.middleware == {"tool_request", "tool_execution", "llm_request",
-                                   "llm_execution"}
+    assert SNAPSHOT.middleware == {"tool_request", "tool_execution", "llm_request", "llm_execution"}
     assert {"help", "new", "model"} <= SNAPSHOT.commands
     assert "sentinel" not in SNAPSHOT.commands  # our slash command must stay free
     assert "vision" in SNAPSHOT.aux_tasks and "sentinel_vision" not in SNAPSHOT.aux_tasks

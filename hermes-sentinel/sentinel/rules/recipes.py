@@ -11,7 +11,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .rules import MODE_ABSENCE, MODE_CONDITION, MODE_TRIGGER, RuleSpec
+from .constants import MODE_ABSENCE, MODE_CONDITION, MODE_TRIGGER
+from .spec import RuleSpec
 
 __all__ = ["RECIPES", "Recipe", "build_rule", "get_recipe", "recipe_names"]
 
@@ -31,6 +32,7 @@ class Recipe:
     confidence_threshold: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """JSON-safe summary of the recipe."""
         return {
             "name": self.name,
             "title": self.title,
@@ -110,6 +112,7 @@ assert all(r.mode in (MODE_TRIGGER, MODE_CONDITION, MODE_ABSENCE) for r in RECIP
 
 
 def recipe_names() -> list[str]:
+    """Sorted names of the bundled recipes."""
     return sorted(RECIPES)
 
 
