@@ -1,0 +1,40 @@
+# Draft for NousResearch/hermes-agent: plugin-catalog/hermes-sentinel.yaml
+# Before opening the PR: replace <FILL_40_CHAR_SHA> everywhere (sha, docs_url, screenshots),
+# delete these comment lines, and check the file again with the release checklist.
+name: hermes-sentinel
+version: "0.1.0"
+repo: https://github.com/StarAtNyte/hermes-sentinel
+sha: <FILL_40_CHAR_SHA>
+subdir: hermes-sentinel
+title: Hermes Sentinel
+description: "Give Hermes eyes: describe in plain English what to watch for on a webcam, the screen, an RTSP/HTTP stream, a snapshot URL or an image folder, and Hermes alerts you with a photo when it happens and remembers what it saw. A local change gate drops quiet frames; only changed frames (or scheduled ticks) reach a vision model; verdicts are confirmed k-of-n with cooldowns and hard hourly/daily call caps; false-alarm feedback tightens the rule. Eight sentinel_* tools, a /sentinel command, two auxiliary tasks (sentinel_vision, sentinel_rules) and a Desktop pane. Disclosure — camera/screen frames: opens local cameras (probes indexes 0-4 when listing sources) and captures the screen with mss, and reads image files from folder: sources and from sentinel_teach image_path; changed frames (JPEG, at most 1024 px, optionally an ROI crop and up to 2 positive and 2 negative example images) are sent to the vision model you configure for the sentinel_vision auxiliary task through ctx.llm, and rule text to the sentinel_rules task; no other third-party host is called, apart from the stream and snapshot URLs you supply (including ${SECRET} ones read via agent.secret_scope.get_secret; snapshot redirects are followed with Authorization dropped on a host change). Background processes: a watcher with daemon threads (one capture thread per source, two judge workers, a scheduler, a prune thread, short probe threads) starts when a rule exists or about 25 s after load if enabled rules exist, stops on unload, and an engine.lock file keeps two Hermes processes on one profile from opening the same camera. Alerts are injected into your chat session with ctx.inject_message (photo via MEDIA:, caption inside an untrusted-observation block), so photos and captions reach the agent's main model and your messaging platform; outside the classic CLI Hermes refuses this unless you set plugins.entries.hermes-sentinel.allow_gateway_injection: true, and the plugin never sets it for you. Local storage under HERMES_HOME/plugin-data/hermes-sentinel/: rules, events, captions, snapshots, examples, usage counters and chat routes (platform, chat id, session key); photos may show people and private rooms; events and snapshots are deleted after 7 days and the oldest photos go first above 500 MB (both configurable). No shell commands, no writes outside the plugin data directory, no telemetry, no update checks, no stored credentials. Not a safety device: do not rely on it for fire, gas or medical alerts."
+maintainer: StarAtNyte
+tier: community
+category: automation
+requires_hermes: ">=0.22.5"
+docs_url: https://github.com/StarAtNyte/hermes-sentinel/blob/<FILL_40_CHAR_SHA>/hermes-sentinel/README.md
+platforms: []
+readme: true
+screenshots:
+  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/alert-telegram.png
+  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/desktop-pane.png
+  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/sentinel-status.png
+known_issues:
+  - "Outside the classic CLI, alerts are only delivered after you add plugins.entries.hermes-sentinel.allow_gateway_injection: true to config.yaml; /sentinel status shows the exact snippet when delivery is refused."
+  - "Needs a vision-capable model routed to the sentinel_vision auxiliary task, otherwise judging fails (the gate keeps running)."
+  - "On Telegram/Discord send /sentinel here once so alerts return to that chat."
+  - "Screen capture needs a display; it is not available on a headless server."
+  - "Frames are judged as single stills (no motion or audio); expect misses and false alarms. Not a safety device."
+capabilities:
+  provides_tools:
+    - sentinel_sources
+    - sentinel_watch
+    - sentinel_rules
+    - sentinel_update
+    - sentinel_look
+    - sentinel_events
+    - sentinel_feedback
+    - sentinel_teach
+  provides_hooks: []
+  provides_middleware: []
+  requires_env: []
