@@ -391,9 +391,12 @@ class Alerter:
         chat_id = _clean_value(origin.get("chat_id"))
         session_id = _clean_value(origin.get("session_id"))
         chat = is_chat_origin(origin)
-        if session_key:
+        has_route = bool(platform and chat_id and platform not in LOCAL_SURFACES)
+        # A classic CLI process puts any origin-less injection, keyed or not, into its local
+        # REPL. So a chat origin with a full route uses only the origin attempt.
+        if session_key and not (chat and has_route):
             attempts.append(("session_key", {"session_key": session_key}))
-        if platform and chat_id and platform not in LOCAL_SURFACES:
+        if has_route:
             route = {k: origin[k] for k in _ROUTE_KEYS if _clean_value(origin.get(k))}
             attempts.append(("origin", {"origin": route}))
         if not chat:

@@ -1,8 +1,8 @@
 name: hermes-sentinel
-version: "0.0.1"
+version: "0.1.0"
 manifest_version: 2
 api_version: 1
-description: "Watch cameras, the screen, or a web page for events you describe in plain English. A local change gate filters frames; only changed frames go to a vision model judge, and confirmed events wake the agent."
+description: "Watch cameras, the screen, for events you describe in plain English. A local change gate filters frames; only changed frames go to a vision model judge, and confirmed events wake the agent."
 author: "Nitij Khanal"
 license: MIT
 tags: [vision, monitoring, camera, screen]
@@ -50,7 +50,7 @@ config_schema:
   idle_check_seconds:
     type: float
     default: 300
-    description: "Re-check every rule this often even without motion (0 disables)."
+    description: "Re-check condition and absence rules this often even without motion (0 disables). Trigger rules are stretched to at least 6 hours."
   retention_days:
     type: float
     default: 7

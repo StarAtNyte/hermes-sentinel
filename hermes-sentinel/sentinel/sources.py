@@ -105,7 +105,7 @@ MAX_CAMERA_INDEX = 64
 MAX_SNAPSHOT_BYTES = 20 * 1024 * 1024
 MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024
 MAX_FOLDER_ENTRIES = 10_000
-_USER_AGENT = "hermes-sentinel/0.1 (+https://github.com/NousResearch/hermes-agent)"
+_USER_AGENT = "hermes-sentinel/0.1.0 (+https://github.com/NousResearch/hermes-agent)"
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")

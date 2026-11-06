@@ -216,9 +216,10 @@ def test_here_routes_messaging_alerts(telegram_ctx):
     origin = rig.sentinel.store.get_rule(out["rule"]["rule_id"]).origin
     assert origin["session_key"] == "agent:main:telegram:dm:42"
 
-    # Delivery uses the key.
+    # Delivery uses the chat origin (platform + chat id), never a bare session key.
     rig.sentinel.alerter.notice("hello", origin=origin)
-    assert fake_ctx.injected[-1].session_key == "agent:main:telegram:dm:42"
+    assert fake_ctx.injected[-1].session_key is None
+    assert fake_ctx.injected[-1].origin["chat_id"] == "42"
 
 
 def test_here_variants(rig):

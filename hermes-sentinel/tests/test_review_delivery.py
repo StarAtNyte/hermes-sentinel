@@ -124,6 +124,23 @@ def test_chat_rule_never_reaches_the_classic_cli():
 
 
 @pytest.mark.parametrize("origin", [
+    {"session_key": "agent:tg:1", "platform": "telegram", "chat_id": "1", "surface": "telegram"},
+])
+def test_chat_rule_keyed_injection_cannot_reach_the_classic_cli(origin):
+    """A classic CLI process puts any origin-less injection (even keyed) into its REPL."""
+    c = FakeCtx(classic_cli=True)
+    try:
+        assert c.inject_message("x", session_key="agent:tg:1") is True  # the host accepts it
+        c.injected.clear()
+        a = alerts.Alerter(c)
+        a.alert_event(rule(origin=origin), event(), source_name=CAM, post_fallback=True)
+        assert all(m.origin is not None and m.session_key is None for m in c.injected)
+        assert not any(m.origin is None for m in c.injected)
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize("origin", [
     {"surface": "telegram", "session_id": "s"},
     {"platform": "discord", "surface": "discord"},
     {"surface": "slack", "session_id": "s"},

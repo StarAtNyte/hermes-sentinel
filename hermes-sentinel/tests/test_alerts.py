@@ -231,7 +231,7 @@ def test_routes_are_tried_in_order_until_accepted():
     host = Picky()
     origin = {"session_key": "k", "platform": "telegram", "chat_id": "1", "session_id": "s"}
     d = alerts.Alerter(host).alert_event(rule(origin=origin), event(), source_name="c")
-    assert d.via == "failed" and host.tried == ["k", "origin"]  # chat: never key-less
+    assert d.via == "failed" and host.tried == ["origin"]  # chat: origin only
     host.tried.clear()
     alerts.Alerter(host).notice("x", origin={"session_id": "s", "surface": "desktop"})
     assert host.tried == ["s", "keyless"]
