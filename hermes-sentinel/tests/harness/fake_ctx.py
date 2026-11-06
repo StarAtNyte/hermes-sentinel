@@ -108,6 +108,7 @@ class FakeRegistration:
     name: str
     _dispose: Callable[[], None] | None = None
     disposed: bool = False
+    hold_stream: bool = False
 
     def dispose(self) -> None:
         if self.disposed:
@@ -899,8 +900,17 @@ class FakeCtx:
 
         return self._handle(kind, key, undo)
 
-    def register_hook(self, hook_name: str, callback: Callable) -> FakeRegistration:
-        return self._track_callback("hook", hook_name, callback, self.hooks, self.host.hooks)
+    def register_hook(
+        self, hook_name: str, callback: Callable, *, hold_stream: bool = False
+    ) -> FakeRegistration:
+        """Register a hook; ``hold_stream`` only counts on ``transform_llm_output``."""
+        handle = self._track_callback("hook", hook_name, callback, self.hooks, self.host.hooks)
+        if hold_stream and hook_name != "transform_llm_output":
+            self._warn(f"Plugin '{self.plugin_id}' set hold_stream on '{hook_name}'; "
+                       "only transform_llm_output rewrites the reply, ignored")
+        else:
+            handle.hold_stream = hold_stream
+        return handle
 
     def register_middleware(self, kind: str, callback: Callable) -> FakeRegistration:
         return self._track_callback(
