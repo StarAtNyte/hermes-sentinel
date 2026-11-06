@@ -39,7 +39,7 @@ def test_upsert_validates(store):
 
 def test_corrupt_rule_row_skipped(store):
     store.upsert_rule(rule("rgood"))
-    with store.database.tx() as conn:
+    with store._database.tx() as conn:
         conn.execute("INSERT INTO rules VALUES ('rbad', '{not json', 1, 'a', 'a')")
     assert [r.id for r in store.list_rules()] == ["rgood"]
     assert store.get_rule("rbad") is None

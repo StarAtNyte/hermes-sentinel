@@ -23,8 +23,11 @@ _MARKER_RE = re.compile(r"(?i)untrusted\s+observation")
 
 
 def sanitize_untrusted(text: Any, limit: int) -> str:
-    """Model-written text made safe to quote: no ``MEDIA:`` tags, no slash-command lines, no
-    forged block markers, one ``> `` quoted line per line, at most ``limit`` characters."""
+    """Make model-written text safe to quote.
+
+    Removes ``MEDIA:`` tags, slash-command lines and forged block markers, joins lines, and
+    caps the result at ``limit`` characters.
+    """
     text = _MARKER_RE.sub("observation", str(text or ""))[: limit * 2]
     text = _MEDIA_RE.sub("media -", text)
     lines = []

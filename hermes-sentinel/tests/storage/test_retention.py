@@ -103,6 +103,6 @@ def test_storage_bytes(store):
 def test_unlink_never_leaves_data_dir(store, tmp_path):
     outside = tmp_path / "keep.jpg"
     outside.write_bytes(JPEG)
-    assert store.images.unlink("../../keep.jpg") == 0
-    assert store.images.unlink(str(outside)) == 0
+    assert store._images.unlink("../../keep.jpg") == 0
+    assert store._images.unlink(str(outside)) == 0
     assert outside.exists()

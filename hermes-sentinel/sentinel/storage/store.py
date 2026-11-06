@@ -32,8 +32,7 @@ from .retention import RetentionPolicy, RetentionService
 class Store:
     """SQLite-backed persistence for Sentinel.
 
-    Create once per plugin load; ``close()`` on
-    unload. All public methods are thread-safe.
+    Create once per plugin load; ``close()`` on unload. All public methods are thread-safe.
     """
 
     def __init__(
@@ -56,7 +55,7 @@ class Store:
             raise StoreError(f"invalid sentinel store settings: {exc}") from exc
         policy.max_examples_per_kind = max_examples_per_kind
         self._policy = policy
-        self.database = Database(
+        self._database = Database(
             plugin_name=plugin_name,
             db_filename=db_filename,
             connect=connect,
@@ -64,24 +63,24 @@ class Store:
             enable_fts=enable_fts,
             clock=clock,
         )
-        self.images = ImageFiles(self.database)
-        self._rules = RuleRepository(self.database, self.images)
-        self._events = EventRepository(self.database, self.images, clock)
+        self._images = ImageFiles(self._database)
+        self._rules = RuleRepository(self._database, self._images)
+        self._events = EventRepository(self._database, self._images, clock)
         self._examples = ExampleRepository(
-            self.database, self.images, clock, policy, self._rules, self._events
+            self._database, self._images, clock, policy, self._rules, self._events
         )
-        self._usage = UsageRepository(self.database, clock)
-        self._retention = RetentionService(self.database, self.images, policy, clock)
+        self._usage = UsageRepository(self._database, clock)
+        self._retention = RetentionService(self._database, self._images, policy, clock)
 
     @property
     def data_dir(self) -> Path:
         """Resolved plugin data directory."""
-        return self.database.data_dir
+        return self._database.data_dir
 
     @property
     def fts_enabled(self) -> bool:
         """Whether the FTS5 index is in use."""
-        return self.database.fts_enabled
+        return self._database.fts_enabled
 
     @property
     def retention_days(self) -> float:
@@ -115,7 +114,7 @@ class Store:
 
     def close(self) -> None:
         """Close the connection. Safe to call more than once."""
-        self.database.close()
+        self._database.close()
 
     def __enter__(self) -> Store:
         """Context-manager entry."""
@@ -127,7 +126,7 @@ class Store:
 
     def schema_version(self) -> int:
         """Highest applied migration."""
-        return self.database.schema_version()
+        return self._database.schema_version()
 
     def upsert_rule(self, spec: RuleSpec) -> RuleSpec:
         """Insert or replace a rule (validated first)."""
@@ -259,7 +258,7 @@ class Store:
 
     def storage_bytes(self) -> int:
         """Bytes used by snapshot and example images."""
-        return self.images.storage_bytes()
+        return self._images.storage_bytes()
 
     def prune(self, now: float | None = None) -> PruneReport:
         """Apply retention and the storage cap."""

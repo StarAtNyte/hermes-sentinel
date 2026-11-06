@@ -34,7 +34,7 @@ def test_concurrent_event_writes(store):
 
 
 def test_failed_transaction_rolls_back(store):
-    with pytest.raises(RuntimeError), store.database.tx() as conn:
+    with pytest.raises(RuntimeError), store._database.tx() as conn:
         conn.execute("INSERT INTO events(rule_id, ts) VALUES ('r', 'x')")
         raise RuntimeError("boom")
     assert store.count_events() == 0

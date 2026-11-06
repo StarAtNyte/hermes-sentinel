@@ -138,7 +138,8 @@ def compile_rule(
         return fallback_rule(cleaned, source, defaults=defaults, origin=origin)
     try:
         parsed = _call_llm(llm, cleaned, source, task=task, timeout=timeout)
-        base = {**rule_defaults(defaults), **coerce_llm_fields(parsed)}
+        fields = coerce_llm_fields(parsed)
+        base = {**rule_defaults(defaults), **fields}
         return RuleSpec(
             source=source,
             text=cleaned,

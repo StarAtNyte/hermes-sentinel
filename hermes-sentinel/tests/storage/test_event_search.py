@@ -80,7 +80,7 @@ def test_fts_rebuilt_after_writes_without_fts(plugin_data_dir, clock):
 
 def test_fts_query_error_falls_back_to_like(store, monkeypatch):
     seed(store)
-    with store.database.tx() as conn:
+    with store._database.tx() as conn:
         conn.execute("DROP TABLE events_fts")
     assert len(store.query_events(text="mug")) == 2
 

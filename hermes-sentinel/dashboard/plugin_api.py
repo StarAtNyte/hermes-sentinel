@@ -490,7 +490,7 @@ def _frame(source_key: str) -> bytes:
     frame = engine.latest_frame(key) if key is not None else None
     if frame is None:
         raise ApiError(404, "no frame available for this source yet")
-    data = _mod("judge").encode_jpeg(frame, max_side=FRAME_MAX_SIDE, quality=FRAME_QUALITY)
+    data = _mod("vision.imaging").encode_jpeg(frame, max_side=FRAME_MAX_SIDE, quality=FRAME_QUALITY)
     if data is None:
         raise ApiError(404, "could not encode the frame")
     return data

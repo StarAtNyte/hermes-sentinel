@@ -27,7 +27,7 @@ def test_reopen_is_idempotent(plugin_data_dir, clock):
     s2 = Store(clock=clock)
     assert s2.schema_version() == 1
     assert [r.id for r in s2.list_rules()] == ["rmug"]
-    rows = s2.database.read("SELECT COUNT(*) FROM schema_migrations")
+    rows = s2._database.read("SELECT COUNT(*) FROM schema_migrations")
     assert rows[0][0] == 1
     s2.close()
 

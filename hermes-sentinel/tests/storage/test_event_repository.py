@@ -67,7 +67,7 @@ def test_add_and_get_event(store):
     d = ev.to_dict()
     assert d["caption"] == "mug taken" and d["source"] == "webcam:0"
     # relative paths are stored
-    assert store.database.read("SELECT snapshot_path FROM events")[0][0].startswith("snapshots/")
+    assert store._database.read("SELECT snapshot_path FROM events")[0][0].startswith("snapshots/")
 
 
 def test_add_event_relative_snapshot_path(store):
