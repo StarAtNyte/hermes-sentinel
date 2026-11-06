@@ -54,6 +54,9 @@ jobs:
       - name: ruff
         run: uv run --no-sync ruff check .
 
+      - name: ruff format
+        run: uv run --no-sync ruff format --check .
+
       - name: pytest (plugin tests)
         run: |
           if find hermes-sentinel/tests -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
@@ -67,3 +70,6 @@ jobs:
 
       - name: rule_lint (catalog admission rules)
         run: uv run --no-sync python scripts/rule_lint.py hermes-sentinel
+
+      - name: structure report (informational, never fails)
+        run: uv run --no-sync python scripts/structure_lint.py --report || true

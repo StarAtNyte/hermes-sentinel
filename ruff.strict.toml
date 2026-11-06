@@ -26,3 +26,7 @@ max-complexity = 10
 # The plugin directory name "hermes-sentinel" is fixed by Hermes and is not an importable name.
 "hermes-sentinel/__init__.py" = ["N999"]
 "hermes-sentinel/sentinel/__init__.py" = ["N999"]
+"hermes-sentinel/sentinel/*/__init__.py" = ["N999"]
+"hermes-sentinel/sentinel/*/*/__init__.py" = ["N999"]
+# Domain exception names are public API (tests, engine, tools); keep them without the Error suffix.
+"hermes-sentinel/sentinel/**/errors.py" = ["N818"]

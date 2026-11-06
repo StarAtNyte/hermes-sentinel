@@ -620,9 +620,7 @@ _JS_PATTERNS: tuple[tuple[str, str], ...] = (
 JS_RULES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(pattern, _JS_FLAGS), message) for pattern, message in _JS_PATTERNS
 )
-DYNAMIC_IMPORT_RE = re.compile(
-    r"(?<![\w$.])import\s*\(\s*(?:(['\"`])([^'\"`]*)\1)?", re.MULTILINE
-)
+DYNAMIC_IMPORT_RE = re.compile(r"(?<![\w$.])import\s*\(\s*(?:(['\"`])([^'\"`]*)\1)?", re.MULTILINE)
 
 
 def _strip_js_comments(source: str) -> str:
