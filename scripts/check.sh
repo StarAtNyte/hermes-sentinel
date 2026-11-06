@@ -17,7 +17,9 @@
 # into that isolated runtime, not the user's Hermes venv. Bytecode is redirected to the
 # cache dir so neither the Hermes checkout nor the plugin dir gets __pycache__ files.
 #
-# Usage: scripts/check.sh [--skip-hermes] [-h|--help]
+# Usage: scripts/check.sh [--with-hermes] [-h|--help]
+#        The Hermes steps (5-7) are SKIPPED by default so the real Hermes install is never
+#        touched; pass --with-hermes to run them (still in the isolated home).
 # Env:   HERMES_AGENT_DIR (default ~/.hermes/hermes-agent, read only)
 #        HERMES_PYTHON    (default python3; must have Hermes' dependencies)
 #        SENTINEL_HERMES_HOME (override the isolated data root)
@@ -30,12 +32,13 @@ HERMES_AGENT_DIR="${HERMES_AGENT_DIR:-$HOME/.hermes/hermes-agent}"
 HERMES_PYTHON="${HERMES_PYTHON:-python3}"
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/hermes-sentinel-dev"
 DEV_HERMES_HOME="${SENTINEL_HERMES_HOME:-$CACHE_ROOT/hermes-home}"
-SKIP_HERMES=0
+SKIP_HERMES=1
 
 for arg in "$@"; do
   case "$arg" in
     --skip-hermes) SKIP_HERMES=1 ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --with-hermes) SKIP_HERMES=0 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "check.sh: unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -127,9 +130,9 @@ run_step "pytest (tests_tools)" "$UV" run --group dev pytest "$ROOT/tests_tools"
 run_step "rule_lint" "$UV" run --group dev python "$ROOT/scripts/rule_lint.py" "$PLUGIN_DIR"
 
 if [[ $SKIP_HERMES -eq 1 ]]; then
-  skip_step "hermes plugins validate" "--skip-hermes"
-  skip_step "dev-link plugin (isolated home)" "--skip-hermes"
-  skip_step "hermes plugins doctor" "--skip-hermes"
+  skip_step "hermes plugins validate" "pass --with-hermes to run"
+  skip_step "dev-link plugin (isolated home)" "pass --with-hermes to run"
+  skip_step "hermes plugins doctor" "pass --with-hermes to run"
 elif [[ ! -f "$HERMES_AGENT_DIR/hermes" ]]; then
   skip_step "hermes plugins validate" "no Hermes checkout at $HERMES_AGENT_DIR"
   skip_step "dev-link plugin (isolated home)" "no Hermes checkout at $HERMES_AGENT_DIR"
