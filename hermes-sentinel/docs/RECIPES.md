@@ -1,6 +1,6 @@
 # Recipes
 
-A recipe is a hand-written rule: a precise yes/no question, a mode, hold time and cooldown. Using one skips the rule-compiling model call, so it works offline and behaves the same for everyone. Ask Hermes for one by name ("use the package-at-door recipe on stream:door"). You can still set `source`, `roi`, `cooldown_seconds`, `schedule` and `action_prompt` on top. Confidence threshold and k-of-n come from your settings.
+A recipe is a hand-written rule: a precise yes/no question, a mode, hold time and cooldown. Using one skips the rule-compiling model call, so it works offline and behaves the same for everyone. Ask Hermes for one by name ("use the package-at-door recipe on stream:door"). You can still set `source`, `roi`, `cooldown_seconds`, `schedule` and `action_prompt` on top. Confidence threshold and k-of-n come from your settings, except where a recipe pins its own (`print-failure` uses 0.75).
 
 General tuning for any recipe: add a `roi` around the interesting area; send "false alarm" on wrong alerts; add `no` examples with `sentinel_teach`; check with `/sentinel test <rule_id>`.
 

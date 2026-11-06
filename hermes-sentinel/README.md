@@ -122,13 +122,13 @@ auxiliary:
     model: google/gemini-2.5-flash-lite
 ```
 
-**Telegram, Discord and other chats.** In a messaging chat Hermes does not hand tools the chat's routing key; slash commands get it. Send `/sentinel here` once in that chat so Sentinel learns where to deliver. `/sentinel here all` moves your existing rules in that chat to the current one. A rule created in a chat is only ever delivered to that chat, and that chat only sees its own rules.
+**Telegram, Discord and other chats.** In a messaging chat Hermes does not hand tools the chat's routing key; slash commands get it. Send `/sentinel here` once in that chat so Sentinel learns where to deliver. `/sentinel here all` moves your existing rules in that chat to the current one. A rule created in a chat is delivered to that chat (by platform and chat id, never to the local CLI session of the process that happens to run it), and that chat only sees its own rules. If the chat route cannot be used, the alert is reported as undelivered rather than sent elsewhere.
 
 ## Quick start
 
 ```
 /sentinel status                              # confirm it is loaded; shows budget and the YAML above
-/sentinel here                                # chat platforms only, once
+/sentinel here                                # once per session while Sentinel does not know its key (chat or local)
 "Hermes, use the package-at-door recipe on camera:0"   # or any plain-English request
 ```
 
@@ -138,13 +138,13 @@ Then, any time: `/sentinel list`, `/sentinel test <rule_id>`, `/sentinel pause <
 
 | Spec | Watches | Notes |
 |---|---|---|
-| `camera:N` (or just `N`) | Webcam by OpenCV index | Default is `camera:0`. `sentinel_sources` probes indexes 0-4. |
-| `screen`, `screen:N` | Monitor N (1 = primary, 0 = all) | Needs a display. |
+| `camera:N` (or just `N`) | Webcam by OpenCV index | Default is `camera:0`. `webcam`, `cam:N`, `webcam:N` and a bare `camera`/`webcam` (index 0) also work. `sentinel_sources` probes indexes 0-4. |
+| `screen`, `screen:N` | Monitor N (1 = primary, 0 = all) | Needs a display. `monitor:N` is an alias. |
 | `screen:N@x,y,w,h` | A region of a monitor | Pixels, relative to the monitor. |
-| `rtsp://host/path` | RTSP stream | Via OpenCV/FFmpeg. |
+| `rtsp://host/path` | RTSP stream | Via OpenCV/FFmpeg. `rtsps`, `rtmp`, `rtmps`, `udp` and `tcp` URLs are accepted as streams too. |
 | `stream:http://host/video.mjpg` | HTTP(S) MJPEG or video stream | URLs ending `.mjpg`, `.m3u8`, `.mp4` and similar are treated as streams. |
-| `snapshot:https://host/cam.jpg` | A JPEG URL, fetched once per read | A plain `http(s)://` URL without a video extension is also a snapshot. Redirects stay on the same host. |
-| `folder:/path/to/dir` | The newest image file in a folder | Useful for cameras that drop files, or for testing. |
+| `snapshot:https://host/cam.jpg` | A JPEG URL, fetched once per read | A plain `http(s)://` URL without a video extension is also a snapshot. Redirects are followed; the `Authorization` header is dropped when the host changes. |
+| `folder:/path/to/dir` | The newest image file in a folder | Useful for cameras that drop files, or for testing. `dir:/path` and a bare existing directory path work too. |
 | `stream:<name>` or `<name>` | A named stream from `stream_urls` | See below. |
 
 Named streams and secrets. Put cameras with passwords in config using `${SECRET}` placeholders; they are resolved through the Hermes secret scope at connect time and never written to disk, rules or error text. A literal password in a URL is rejected.
@@ -198,7 +198,7 @@ The agent uses these; you normally just talk to Hermes.
 | `sentinel_feedback` | Mark an event `correct` or `false_alarm`. A false alarm becomes a negative example and raises the rule's confidence threshold by 0.05 (to at most 0.95). Repeating the same verdict changes nothing. |
 | `sentinel_teach` | Add a `yes` or `no` example image from a file, an event photo, or the live frame. The two newest of each kind are sent with every check. |
 
-At most 50 rules can exist. Plain-English compiling is limited to 10 per hour (recipes are not counted).
+At most 50 rules can exist in total, across all chats (not 50 per chat). Plain-English compiling is limited to 10 per hour per running plugin instance (recipes are not counted).
 
 ## Slash commands
 
@@ -223,15 +223,15 @@ Set under `plugins.entries.hermes-sentinel.settings.<key>` in `config.yaml`. Inv
 | Key | Default | Meaning |
 |---|---|---|
 | `default_source` | `camera:0` | Source used when a request names none. |
-| `vision_calls_per_hour` | `60` | Cap on vision checks per clock hour, across all rules. `0` pauses judging; `null`, `-1` or `unlimited` removes the cap. |
+| `vision_calls_per_hour` | `60` | Cap on vision checks per clock hour, across all rules. `0` pauses judging; `null`, `-1`, `unlimited`, `none` or `off` removes the cap. |
 | `vision_calls_per_day` | `500` | Cap per rolling 24 hours, across all rules. |
 | `confirm_k` | `2` | Positive verdicts needed out of the last `confirm_n`. Must not exceed `confirm_n`. |
 | `confirm_n` | `3` | Size of the confirmation window (1-20). |
 | `confidence_threshold` | `0.7` | Minimum judge confidence (0-1) for a verdict to count. |
-| `idle_check_seconds` | `300` | Re-check condition and absence rules this often without motion. `0` disables. |
+| `idle_check_seconds` | `300` | Re-check condition and absence rules this often without motion (trigger rules stretch it to at least 6 hours). Range 0 to 7 days; `0` disables the gate tick. |
 | `retention_days` | `7` | Delete events and snapshots older than this. Minimum 0.01. |
 | `max_storage_mb` | `500` | Snapshot storage cap; oldest photos are pruned first. Minimum 1. |
-| `stream_urls` | `{}` | Named streams, name to URL, with `${SECRET}` placeholders. |
+| `stream_urls` | `{}` | Named streams, name to URL, with `${SECRET}` placeholders. At most 64 entries, names up to 64 characters, URLs up to 2048 characters. |
 | `alert_snapshots` | `true` | Attach the event photo (`MEDIA:`) to alerts. |
 
 New rules copy `confirm_k`, `confirm_n` and `confidence_threshold` at creation; changing the settings later does not alter existing rules.
@@ -253,10 +253,10 @@ Typical numbers, from the logic above: a trigger rule on a quiet doorway uses 1 
 ## Privacy and security
 
 - **What leaves your machine.** Frames, and only changed frames or scheduled ticks, go to the vision model you configured for `sentinel_vision`, through Hermes' own LLM interface (`ctx.llm`), as JPEG of at most 1024 px, optionally with a close-up crop of the ROI and up to two positive and two negative example images. Rule text goes to the `sentinel_rules` model. Nothing else is sent anywhere by this plugin.
-- **Where snapshots live.** `$HERMES_HOME/plugin-data/hermes-sentinel/`: `sentinel.db` (SQLite), `snapshots/YYYY-MM-DD/*.jpg`, `examples/<rule_id>/*.jpg`, `routes.json` (which chats the plugin has seen, so alerts return to the right one) and `engine.lock`.
+- **Where snapshots live.** `$HERMES_HOME/plugin-data/hermes-sentinel/`: `sentinel.db` (SQLite), `snapshots/YYYY-MM-DD/*.jpg`, `examples/<rule_id>/*.jpg`, `routes.json` (chat and session identifiers: platform, chat id, session key, so alerts return to the right chat) and `engine.lock`.
 - **Retention.** Events and snapshots are deleted after `retention_days` (7) and the oldest photos go first when `max_storage_mb` (500) is exceeded. Pruning runs hourly. Deleting a rule with `purge_events` also removes its events and photos.
 - **Prompt injection.** Text in the scene (a sign saying "ignore previous instructions") reaches the agent only as a caption. Alerts list their instructions first, then the photo, then the caption and reason inside a quoted `BEGIN/END UNTRUSTED OBSERVATION` block, with the agent told never to follow anything inside it. Captions are length-capped, stripped of `MEDIA:` tokens, slash-leading lines and forged markers. The judge prompt treats example images as past references, not instructions.
-- **Chat isolation.** A rule created in a messaging chat is never delivered to the local CLI or other chats, and other chats cannot list, edit or read its events.
+- **Chat isolation.** A rule created in a messaging chat is delivered only by its own platform and chat id, never through a session key or local route that a classic CLI process could take; other chats cannot list, edit or read its events. Local sessions (CLI, TUI, Desktop) can see all rules.
 - **Credentials.** Stream and snapshot secrets are read only through the Hermes secret scope and never stored. Literal passwords in URLs are rejected, and URLs are redacted in errors.
 - **Nothing waits on a human.** No approval prompts, no blocking input. Alerts are fire-and-forget; under cron or a gateway the plugin never stalls. If delivery is refused, the event is still stored.
 
@@ -264,9 +264,11 @@ Typical numbers, from the logic above: a trigger rule on a quiet doorway uses 1 
 
 This section covers the catalog's rule 13.
 
-- **Network calls.** (a) Vision and rule-compiling requests to the model provider you configured through Hermes (`ctx.llm`), containing camera or screen frames and rule text. (b) Requests to stream and snapshot URLs that you supply (`rtsp://`, `stream:`, `snapshot:`, `stream_urls`), including `${SECRET}`-authenticated ones. No other hosts are contacted.
+- **Network calls.** (a) Vision and rule-compiling requests to the model provider you configured through Hermes (`ctx.llm`), containing camera or screen frames and rule text. (b) Requests to stream and snapshot URLs that you supply (`rtsp://`, `stream:`, `snapshot:`, `stream_urls`), including `${SECRET}`-authenticated ones. No other hosts are contacted, except redirect targets of URLs you supply (snapshot redirects are followed, with the `Authorization` header dropped when the host changes).
 - **Camera and screen capture.** Opens local cameras (and briefly probes indexes 0-4 when listing sources), captures the screen with `mss`, and reads image files from `folder:` sources and from `image_path` given to `sentinel_teach`. These reads are only of what you point it at.
-- **Long-running background activity.** A watcher with daemon threads (one capture thread per source, two judge workers, a scheduler) starts when a rule exists, about 25 seconds after load if enabled rules already exist, or when a tool adds a rule. It stops on plugin unload. An exclusive lock file `engine.lock` in the plugin data directory keeps two Hermes processes on one profile from opening the same camera; the second waits in standby.
+- **Long-running background activity.** A watcher with daemon threads (one capture thread per source, two judge workers, a scheduler, a standby thread while another process holds the lock, short-lived camera and screen probe threads, a boot timer and a background prune thread) starts when a rule exists, about 25 seconds after load if enabled rules already exist, or when a tool adds a rule. It stops on plugin unload. An exclusive lock file `engine.lock` in the plugin data directory keeps two Hermes processes on one profile from opening the same camera; the second waits in standby.
+- **Alert content.** Alert photos and captions are injected into the chat session, so they go to the agent's main model and, through `MEDIA:`, to the messaging platform you are using. Rule text and captions also go to the agent.
+- **Gateway injection opt-in.** `allow_gateway_injection: true` lets this plugin inject messages into your chat sessions (outside the classic CLI, Hermes refuses it unless you opt in). Leave it off if you do not want that; alerts then cannot be delivered.
 - **Local storage.** Rules, events, captions, snapshots, teaching examples, usage counters and chat routes are stored under `$HERMES_HOME/plugin-data/hermes-sentinel/`, as listed above. Photos may contain people and private spaces.
 - **Telemetry.** None. No analytics, no update checks, no downloads of code.
 - **Credentials.** None stored. Secrets are read through `agent.secret_scope.get_secret` only when a configured URL contains a `${NAME}` placeholder.

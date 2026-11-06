@@ -4,8 +4,6 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ## 0.1.0 - initial release
 
-Note: `plugin.yaml` and `__init__.py` still say `0.0.1`; bump both to match before pinning the catalog entry.
-
 ### Added
 
 - Plain-English watch rules with three modes (`trigger`, `condition`, `absence`), hold time, cooldown, region of interest and active-hours schedule.
