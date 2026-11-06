@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info
+tests/fixtures/generated/
+.coverage
