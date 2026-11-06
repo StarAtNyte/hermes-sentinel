@@ -698,6 +698,9 @@ class FakeCtx:
         session_surface: str = "cli",
         inject_result: bool = True,
         post_ok: bool = True,
+        gateway_injection_allowed: bool = True,
+        classic_cli: bool = False,
+        gateway_live: bool = True,
         host: HermesSurface | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
@@ -711,6 +714,13 @@ class FakeCtx:
         self._session_surface = session_surface
         self.inject_result = inject_result
         self.post_ok = post_ok
+        #: ``plugins.entries.<id>.allow_gateway_injection`` (real default: off).
+        self.gateway_injection_allowed = gateway_injection_allowed
+        #: a classic in-process CLI REPL is attached (it takes any non-origin injection).
+        self.classic_cli = classic_cli
+        #: a live gateway/TUI message injector exists.
+        self.gateway_live = gateway_live
+        self.inject_refused: list[tuple[str, str]] = []  # (reason, content)
         self.host = host or surface()
         self._lock = threading.RLock()
         self._llm = FakeLlm(
@@ -1025,9 +1035,34 @@ class FakeCtx:
         session_key: str | None = None,
         origin: Mapping[str, Any] | None = None,
     ) -> bool:
+        reason = self._injection_refusal(session_key, origin)
         with self._lock:
-            self.injected.append(InjectedMessage(content, role, session_key, origin))
+            if reason:  # refused by the host before reaching any session: not "injected"
+                self.inject_refused.append((reason, content))
+            else:
+                self.injected.append(InjectedMessage(content, role, session_key, origin))
+        if reason:
+            self._warn(f"inject_message: {reason}")
+            return False
         return self.inject_result
+
+    def _injection_refusal(self, session_key: str | None, origin: Mapping[str, Any] | None) -> str:
+        """Why the real ``hermes_cli.plugins_injection.inject_plugin_message`` would return
+        ``False`` before reaching a session ('' = accepted). Mirrors its checks in order."""
+        if self.classic_cli and origin is None:
+            return ""  # the in-process REPL takes it, whatever the key is
+        if session_key and origin is not None:
+            return "pass session_key or origin, not both"
+        if not session_key and origin is None and not self.gateway_live:
+            return "gateway mode requires an existing session_key or an origin"
+        if origin is not None and not isinstance(origin, Mapping):
+            return "origin must be a mapping in the SessionSource.to_dict() shape"
+        if not self.gateway_injection_allowed:
+            return (f"gateway injection denied for plugin {self._plugin_id}; set plugins.entries."
+                    f"{self._plugin_id}.allow_gateway_injection: true to allow it")
+        if not self.gateway_live:
+            return "no live gateway is available"
+        return ""
 
     def post_message(self, text: str) -> FakePostHandle:
         """Never raises; with ``post_ok=False`` returns ``ok=False`` like a call with no session."""
@@ -1136,8 +1171,10 @@ class FakeCtx:
             self._loop.close()
 
     # -- convenience for tests
-    def run_command(self, name: str, raw_args: str = "") -> Any:
-        return self.commands[name]["handler"](raw_args)
+    def run_command(self, name: str, raw_args: str = "", **kwargs: Any) -> Any:
+        """Run a registered slash command; ``kwargs`` are the host's session keywords
+        (``session_id``, ``session_key``, ``platform``, ``source``)."""
+        return self.commands[name]["handler"](raw_args, **kwargs)
 
     def call_tool(self, name: str, args: dict, **kwargs: Any) -> Any:
         return self.tools[name]["handler"](args, **kwargs)

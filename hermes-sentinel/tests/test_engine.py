@@ -408,7 +408,8 @@ def test_judge_errors_back_off_and_notify_once(h):
     h.judge.default = Verdict(None, error="again")
     h.clock.advance(1)
     h.step(gate_result="change")
-    assert len(h.notices("Vision checks are failing")) == 2  # a new failure episode
+    # One success is not enough to re-arm: a flaky model must not notify per episode.
+    assert len(h.notices("Vision checks are failing")) == 1
 
 
 def test_budget_refusal_skips_and_notifies_once(fake_ctx):

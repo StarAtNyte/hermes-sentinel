@@ -8,8 +8,9 @@
 * the ``/sentinel`` slash command;
 * ``ctx.on_unload`` to stop the watcher threads and close the store.
 
-The watcher itself starts lazily: on the first rule, or right away at load when enabled rules
-already exist. Nothing heavy (OpenCV, numpy, SQLite, devices) is touched before that.
+The watcher itself starts lazily: on the first rule, or about 25 s after load when enabled
+rules already exist (a cancellable timer, so one-shot processes never open a camera).
+Nothing heavy (OpenCV, numpy, SQLite, devices) is touched before that.
 """
 
 from __future__ import annotations
@@ -38,4 +39,4 @@ def register(ctx: Any) -> None:
         args_hint=ARGS_HINT,
     )
     ctx.on_unload(sentinel.shutdown)
-    sentinel.boot()
+    sentinel.boot_delayed()

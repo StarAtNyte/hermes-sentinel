@@ -150,8 +150,10 @@ def test_register_wires_tools_tasks_command_and_unload(loaded_plugin):
 
 
 def test_register_boots_watcher_for_existing_rules_and_unload_stops_it(shim_binding,
-                                                                       tmp_path):
+                                                                       tmp_path, monkeypatch):
     from harness.plugin_loader import plugin_module
+
+    monkeypatch.setattr(plugin_module("sentinel.runtime"), "BOOT_DELAY_SECONDS", 0.0)
 
     store_mod = plugin_module("sentinel.store")
     rules = plugin_module("sentinel.rules")

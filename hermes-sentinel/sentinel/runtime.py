@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 __all__ = ["LOCK_FILENAME", "Sentinel", "StoreError", "register_aux_tasks"]
 
 LOCK_FILENAME = "engine.lock"
+BOOT_DELAY_SECONDS = 25.0  # short-lived hermes commands exit before the cameras ever open
+ALERTS_PER_HOUR = 20  # every injected alert is a full agent turn on the main model
+NOTICES_PER_HOUR = 6
 ROUTES_FILENAME = "routes.json"
 
 
@@ -79,8 +82,13 @@ class Sentinel:
         self._engine: Engine | None = None
         self._routes: RouteBook | None = None
         self._closed = False
+        self._boot_timer: threading.Timer | None = None
+        self._pruning = False
         self.judge = Judge(lambda: getattr(ctx, "llm", None), clock=clock)
-        self.alerter = Alerter(ctx, clock=clock, include_media=self.config.alert_snapshots)
+        self.alerter = Alerter(
+            ctx, clock=clock, include_media=self.config.alert_snapshots,
+            global_per_hour=ALERTS_PER_HOUR, notices_per_hour=NOTICES_PER_HOUR,
+        )
 
     def _default_store(self, cfg: SentinelConfig) -> Store:
         return Store(
@@ -99,7 +107,9 @@ class Sentinel:
                 raise StoreError("Sentinel is shutting down")
             if self._store is None:
                 self._store = self._store_factory(self.config)
-            return self._store
+            store = self._store
+        self._kick_prune(store)
+        return store
 
     @property
     def budget(self) -> Budget:
@@ -154,21 +164,75 @@ class Sentinel:
     # ---- lifecycle --------------------------------------------------------------------
 
     def boot(self) -> None:
-        """Start the engine at load time if enabled rules exist. Never raises."""
+        """Start the engine now if enabled rules exist. Never raises."""
         try:
+            self.housekeeping()
             if self.store.list_rules(enabled_only=True):
                 self.engine.start()
         except Exception as exc:  # noqa: BLE001 - a broken store must not break plugin load
             logger.warning("sentinel: not starting the watcher at load: %s", exc)
 
+    def boot_delayed(self, delay: float | None = None) -> None:
+        """Run :meth:`boot` after ``delay`` seconds on a cancellable daemon timer.
+
+        Any process that merely loads the plugin (a one-shot ``hermes`` command, validate,
+        doctor) exits well before this fires, so it never opens a camera, takes the engine
+        lock or spends vision calls. ``shutdown()`` cancels the timer. A tool or command that
+        needs the watcher sooner starts it itself (``add_rule`` starts the engine).
+        """
+        delay = BOOT_DELAY_SECONDS if delay is None else delay
+        with self._lock:
+            if self._closed or self._boot_timer is not None:
+                return
+            timer = threading.Timer(max(0.0, float(delay)), self._boot_if_open)
+            timer.daemon = True
+            timer.name = "sentinel-boot"
+            self._boot_timer = timer
+        timer.start()
+
+    def _boot_if_open(self) -> None:
+        if not self._closed:
+            self.boot()
+
+    def housekeeping(self) -> None:
+        """Apply retention (``store.prune_if_due``) even when no rule is enabled. Never raises."""
+        try:
+            self.store.prune_if_due()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("sentinel: housekeeping prune failed: %s", exc)
+
+    def _kick_prune(self, store: Store) -> None:
+        """From tool/command entry points: prune in the background when the engine's own
+        scheduler is not doing it (no engine running). Cheap no-op unless a prune is due."""
+        engine = self._engine
+        if self._pruning or (engine is not None and engine.running):
+            return
+        due = getattr(store, "prune_due", None)
+        if due is not None and not due():
+            return
+        self._pruning = True
+
+        def run() -> None:
+            try:
+                store.prune_if_due()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("sentinel: background prune failed: %s", exc)
+            finally:
+                self._pruning = False
+
+        threading.Thread(target=run, name="sentinel-prune", daemon=True).start()
+
     def shutdown(self) -> None:
         """Stop threads and close the store (``ctx.on_unload``). Idempotent, never raises."""
         with self._lock:
             self._closed = True
+            timer, self._boot_timer = self._boot_timer, None
             engine, store = self._engine, self._store
             self._engine = None
             self._store = None
             self._budget = None
+        if timer is not None:
+            timer.cancel()
         if engine is not None:
             try:
                 engine.stop()

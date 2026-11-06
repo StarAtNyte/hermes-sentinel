@@ -116,7 +116,7 @@ def test_budget_exhaustion_pauses_judging_with_one_notice(fake_ctx):
     rig.sources[CAM] = FakeSource(build_scene("static_scene", n_frames=30), rig.clock,
                                   loop=True)
     fake_ctx.llm.respond(lambda call: verdict(False, 0.9), task="sentinel_vision")
-    rig.watch(recipe="desk-intruder", source=CAM)
+    rig.watch(recipe="print-failure", source=CAM)  # condition rule: idle ticks apply
     rig.pump(120)  # 12 virtual seconds: ~12 idle ticks, only 2 may reach the model
     assert len(fake_ctx.llm.calls_for(task="sentinel_vision")) == 2
     notices = rig.notices("budget")

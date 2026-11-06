@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import contextvars
 import importlib
 import logging
 import os
@@ -235,9 +236,12 @@ def _call_with_timeout(
     state: dict[str, Any] = {}
     lock = threading.Lock()
 
+    # Keep the caller's contextvars (e.g. Hermes' secret scope) visible to ``fn``.
+    ctx = contextvars.copy_context()
+
     def runner() -> None:
         try:
-            result = fn()
+            result = ctx.run(fn)
         except BaseException as exc:  # noqa: BLE001 - re-raised in the caller's thread
             with lock:
                 state["error"] = exc

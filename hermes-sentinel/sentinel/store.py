@@ -293,8 +293,11 @@ class Store:
         self._lock = threading.RLock()
         self._clock = clock
         self._closed = False
-        self.retention_days = retention_days
-        self.max_storage_mb = max_storage_mb
+        try:
+            self.retention_days = retention_days
+            self.max_storage_mb = max_storage_mb
+        except (TypeError, ValueError) as exc:
+            raise StoreError(f"invalid sentinel store settings: {exc}") from exc
         self.max_examples_per_kind = max(1, int(max_examples_per_kind))
         self._last_prune: float | None = None
         try:
@@ -847,6 +850,26 @@ class Store:
         row = self._read(sql, params)[0]
         return int(row[0]), int(row[1])
 
+    def usage_buckets(self, now: float | None = None) -> list[tuple[float, int]]:
+        """``(bucket start epoch, calls)`` for each non-empty hour bucket in the rolling
+        24 h window, oldest first."""
+        now = self._clock() if now is None else now
+        current, day_start = self._usage_window(now)
+        rows = self._read(
+            "SELECT bucket, SUM(vision_calls) FROM usage WHERE bucket >= ? AND bucket <= ? "
+            "GROUP BY bucket ORDER BY bucket",
+            [day_start, current],
+        )
+        out: list[tuple[float, int]] = []
+        for bucket, calls in rows:
+            try:
+                start = datetime.strptime(str(bucket), "%Y-%m-%dT%H").replace(tzinfo=UTC)
+            except ValueError:
+                continue
+            if int(calls) > 0:
+                out.append((start.timestamp(), int(calls)))
+        return out
+
     def try_consume_usage(
         self,
         n: int = 1,
@@ -998,6 +1021,14 @@ class Store:
         with self._lock:
             self._last_prune = now
         return report
+
+    def prune_due(
+        self, now: float | None = None, interval: float = PRUNE_INTERVAL_SECONDS
+    ) -> bool:
+        """True if :meth:`prune_if_due` would run a prune now."""
+        now = self._clock() if now is None else now
+        with self._lock:
+            return self._last_prune is None or now - self._last_prune >= interval
 
     def prune_if_due(
         self, now: float | None = None, interval: float = PRUNE_INTERVAL_SECONDS

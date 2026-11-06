@@ -106,9 +106,20 @@ def test_watch_with_recipe(rig):
     assert rule["recipe"] == "desk-intruder" and rule["source"] == CAM
     assert rule["compiled_by"] == "manual"
     assert "Checks only when something moves" in out["message"]
-    assert "Alerts will arrive in this session" in out["message"]
+    assert "allow_gateway_injection: true" in out["message"]
+    assert "'/sentinel here'" in out["message"]
     assert rig.engine.running and rig.engine.rule_ids() == [rule["rule_id"]]
     assert rig.sentinel.store.get_rule(rule["rule_id"]).origin == {"surface": "cli"}
+
+
+def test_watch_asks_for_sentinel_here_once_per_session(rig):
+    handler = rig.ctx.tools["sentinel_watch"]["handler"]
+    first = json.loads(handler({"recipe": "pet-on-couch", "source": CAM}, session_id="s1"))
+    second = json.loads(handler({"recipe": "desk-intruder", "source": CAM}, session_id="s1"))
+    other = json.loads(handler({"recipe": "pet-on-couch", "source": CAM}, session_id="s2"))
+    assert "'/sentinel here'" in first["message"] and "'/sentinel here'" in other["message"]
+    assert "'/sentinel here'" not in second["message"]
+    assert "allow_gateway_injection: true" in second["message"]
 
 
 def test_watch_records_origin_from_kwargs(rig):

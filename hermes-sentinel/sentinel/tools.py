@@ -14,12 +14,19 @@ import json
 import logging
 import math
 import re
+import threading
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .alerts import LOCAL_SURFACES, capture_origin
+from .alerts import (
+    GATEWAY_INJECTION_YAML,
+    capture_origin,
+    is_chat_origin,
+    same_chat,
+)
 from .config import SentinelConfig
 from .judge import encode_jpeg
 from .recipes import RECIPES, build_rule, get_recipe, recipe_names
@@ -44,6 +51,11 @@ TOOLSET = "sentinel"
 MAX_RULES = 50
 MAX_TEXT = 2000
 MAX_IMAGE_FILE_BYTES = 20 * 1024 * 1024
+#: Teaching examples are re-encoded to this longest side (they are re-sent with every check).
+EXAMPLE_MAX_SIDE = 768
+EXAMPLE_JPEG_QUALITY = 80
+#: Plain-English rule compiling costs an LLM call outside the vision budget: small own cap.
+COMPILE_CALLS_PER_HOUR = 10
 FALSE_ALARM_STEP = 0.05
 MAX_TUNED_THRESHOLD = 0.95
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".bmp", ".webp"})
@@ -392,21 +404,49 @@ def _caps_text(cfg: SentinelConfig) -> str:
 
 
 def _decode_to_jpeg(data: bytes) -> bytes:
-    """Re-encode any image cv2 can read as a JPEG (for teaching examples)."""
-    if data.startswith(b"\xff\xd8\xff"):
-        return data
+    """Any image cv2 can read as a JPEG whose longest side is at most ``EXAMPLE_MAX_SIDE``
+    (teaching examples). Without OpenCV only JPEG input is accepted, stored unchanged."""
     try:
         import cv2
         import numpy as np
     except Exception:  # noqa: BLE001
+        if data.startswith(b"\xff\xd8\xff"):
+            return data
         raise ToolError("only JPEG images can be used without OpenCV installed") from None
     img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ToolError("the file is not an image Sentinel can read")
-    jpeg = encode_jpeg(img)
+    jpeg = encode_jpeg(img, max_side=EXAMPLE_MAX_SIDE, quality=EXAMPLE_JPEG_QUALITY)
     if jpeg is None:
         raise ToolError("could not convert the image to JPEG")
     return jpeg
+
+
+def _small_jpeg(data: bytes) -> bytes:
+    """``data`` re-encoded to the example size when that works, else unchanged. Never raises."""
+    try:
+        return _decode_to_jpeg(data)
+    except ToolError:
+        return data
+
+
+class _HourlyCap:
+    """Tiny thread-safe rolling-hour counter."""
+
+    def __init__(self, cap: int, clock: Callable[[], float] = time.monotonic) -> None:
+        self.cap = max(0, int(cap))
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._times: list[float] = []
+
+    def take(self) -> bool:
+        now = self._clock()
+        with self._lock:
+            self._times = [t for t in self._times if now - t < 3600.0]
+            if len(self._times) >= self.cap:
+                return False
+            self._times.append(now)
+            return True
 
 
 # --------------------------------------------------------------------------- handlers
@@ -415,8 +455,17 @@ def _decode_to_jpeg(data: bytes) -> bytes:
 class SentinelTools:
     """The eight tool handlers, bound to one :class:`Sentinel`."""
 
-    def __init__(self, sentinel: Sentinel) -> None:
+    def __init__(
+        self,
+        sentinel: Sentinel,
+        *,
+        compile_per_hour: int = COMPILE_CALLS_PER_HOUR,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.s = sentinel
+        self._compile_cap = _HourlyCap(compile_per_hour, clock)
+        self._asked_here: set[str] = set()
+        self._asked_lock = threading.Lock()
 
     def handlers(self) -> dict[str, Callable[..., str]]:
         return {name: self._wrap(name, getattr(self, name)) for name in TOOL_NAMES}
@@ -455,8 +504,14 @@ class SentinelTools:
         SourceSpec.parse(source, named_streams=self.s.config.stream_urls)  # validate early
         return source
 
-    def _rule(self, rule_id: str) -> RuleSpec:
+    def _caller(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        """The calling session's origin (``capture_origin``): who may see which rules."""
+        return capture_origin(kwargs, self.s.ctx, routes=self.s.routes)
+
+    def _rule(self, rule_id: str, caller: Mapping[str, Any] | None = None) -> RuleSpec:
         spec = self.s.store.get_rule(rule_id)
+        if spec is not None and caller is not None and not same_chat(spec.origin, caller):
+            spec = None  # another chat's rule: invisible, not "forbidden"
         if spec is None:
             raise ToolError(f"no rule with id {rule_id!r}; use sentinel_rules to list rules")
         return spec
@@ -494,7 +549,7 @@ class SentinelTools:
         existing = self.s.store.list_rules()
         if len(existing) >= MAX_RULES:
             raise ToolError(f"too many rules ({MAX_RULES}); delete some with sentinel_update")
-        origin = capture_origin(kwargs, self.s.ctx, routes=self.s.routes)
+        origin = self._caller(kwargs)
         if recipe_name:
             recipe = get_recipe(recipe_name)
             if recipe is None:
@@ -505,6 +560,11 @@ class SentinelTools:
         else:
             if not what:
                 raise ToolError("say what to watch for in 'what' (or pick a 'recipe')")
+            if not self._compile_cap.take():
+                raise ToolError(
+                    f"rule compiling is limited to {self._compile_cap.cap} per hour; use a "
+                    "recipe or try again later"
+                )
             spec = compile_rule(what, source, getattr(self.s.ctx, "llm", None),
                                 defaults=cfg.rule_defaults(), origin=origin)
             changes: dict[str, Any] = {}
@@ -539,19 +599,35 @@ class SentinelTools:
         )
         if engine.standing_by:
             message += " (Another Hermes process is running the watcher; it will pick this up.)"
-        surface = str(origin.get("surface") or origin.get("platform") or "").lower()
-        if not origin.get("session_key") and not origin.get("chat_id"):
-            if surface in LOCAL_SURFACES:
-                message += " Alerts will arrive in this session."
-            else:
-                message += (" To receive alerts in this chat, the user should send "
-                            "'/sentinel here' once.")
+        message += (
+            " Alerts are injected into the chat, which Hermes only allows outside the classic "
+            "CLI when the user has set this in config.yaml (it is off by default):\n"
+            + GATEWAY_INJECTION_YAML
+        )
+        message += self._here_hint(origin, kwargs)
         return _ok(rule=_rule_brief(saved), message=message)
 
-    def sentinel_rules(self, args: dict, **_: Any) -> str:
+    def _here_hint(self, origin: Mapping[str, Any], kwargs: Mapping[str, Any]) -> str:
+        """Ask for ``/sentinel here`` once per session while the routing key is unknown."""
+        if origin.get("session_key") or origin.get("chat_id"):
+            return ""
+        who = str(origin.get("session_id") or kwargs.get("session_id") or "?")
+        with self._asked_lock:
+            if who in self._asked_here:
+                return ""
+            self._asked_here.add(who)
+            if len(self._asked_here) > 1024:
+                self._asked_here.clear()
+        where = "this chat" if is_chat_origin(origin) else "this session"
+        return (f" To make sure alerts come back to {where}, ask the user to send "
+                "'/sentinel here' once.")
+
+    def sentinel_rules(self, args: dict, **kwargs: Any) -> str:
         rule_id = _str_arg(args, "rule_id", limit=64)
         store = self.s.store
-        specs = [self._rule(rule_id)] if rule_id else store.list_rules()
+        caller = self._caller(kwargs)
+        specs = ([self._rule(rule_id, caller)] if rule_id else
+                 [r for r in store.list_rules() if same_chat(r.origin, caller)])
         engine = self.s.engine_if_built
         out = []
         for spec in specs:
@@ -577,12 +653,16 @@ class SentinelTools:
             entry["last_event"] = _event_dict(last) if last else None
             entry["events_total"] = store.count_events(rule_id=spec.id)
             out.append(entry)
-        return _ok(rules=out, count=len(out), budget=self.s.budget.status().describe())
+        extra: dict[str, Any] = {}
+        blocked = self.s.alerter.delivery_blocked()
+        if blocked:
+            extra["delivery_blocked"] = blocked
+        return _ok(rules=out, count=len(out), budget=self.s.budget.status().describe(), **extra)
 
-    def sentinel_update(self, args: dict, **_: Any) -> str:
+    def sentinel_update(self, args: dict, **kwargs: Any) -> str:
         rule_id = _str_arg(args, "rule_id", required=True, limit=64)
         action = _str_arg(args, "action", required=True, limit=16).lower()
-        spec = self._rule(rule_id)
+        spec = self._rule(rule_id, self._caller(kwargs))
         engine = self.s.engine
         if action == "pause":
             saved = self._save_and_apply(spec.with_changes(enabled=False))
@@ -649,7 +729,7 @@ class SentinelTools:
             return _err(f"the vision model could not answer: {result.error}", media=media)
         return _ok(source=source, answer=result.answer, caption=result.caption, media=media)
 
-    def sentinel_events(self, args: dict, **_: Any) -> str:
+    def sentinel_events(self, args: dict, **kwargs: Any) -> str:
         text = _str_arg(args, "text", limit=500)
         rule_id = _str_arg(args, "rule_id", limit=64) or None
         feedback = _str_arg(args, "feedback", limit=16) or None
@@ -660,6 +740,10 @@ class SentinelTools:
         since = parse_time_bound(args.get("since"))
         until = parse_time_bound(args.get("until"))
         store = self.s.store
+        caller = self._caller(kwargs)
+        scoped = is_chat_origin(caller)
+        if rule_id and scoped:
+            self._rule(rule_id, caller)  # not this chat's rule: "no rule"
         events = store.query_events(
             text=text or None, rule_id=rule_id,
             since=since.astimezone(UTC) if since else None,
@@ -667,12 +751,15 @@ class SentinelTools:
             feedback=feedback, limit=limit,
         )
         rules = {s.id: s for s in store.list_rules()}
+        if scoped:  # messaging chats only see events of their own rules
+            events = [e for e in events if e.rule_id in rules
+                      and same_chat(rules[e.rule_id].origin, caller)]
         items = [_event_dict(e, rules.get(e.rule_id)) for e in events]
         summary = "; ".join(f"{i['time'][11:16]} {i['caption']}" for i in items[:10])
         return _ok(count=len(items), events=items,
                    summary=summary or "No matching events.")
 
-    def sentinel_feedback(self, args: dict, **_: Any) -> str:
+    def sentinel_feedback(self, args: dict, **kwargs: Any) -> str:
         event_id = _int_arg(args, "event_id", required=True)
         verdict = _str_arg(args, "verdict", required=True, limit=16).lower().replace(" ", "_")
         if verdict in ("false", "wrong", "falsealarm"):
@@ -684,6 +771,20 @@ class SentinelTools:
         event = store.get_event(int(event_id))  # type: ignore[arg-type]
         if event is None:
             raise ToolError(f"no event #{event_id}; use sentinel_events to find it")
+        caller = self._caller(kwargs)
+        if is_chat_origin(caller):
+            owner = store.get_rule(event.rule_id)
+            if owner is None or not same_chat(owner.origin, caller):
+                raise ToolError(f"no event #{event_id}; use sentinel_events to find it")
+        if event.feedback == verdict:  # idempotent: no second example, no second nudge
+            current = store.get_rule(event.rule_id)
+            return _ok(
+                event_id=event.id, feedback=verdict, already_recorded=True,
+                rule_id=event.rule_id,
+                **({"confidence_threshold": current.confidence_threshold} if current else {}),
+                message=f"Event #{event.id} was already marked as {verdict.replace('_', ' ')}; "
+                "nothing changed.",
+            )
         store.set_feedback(event.id, verdict)
         result: dict[str, Any] = {"event_id": event.id, "feedback": verdict}
         spec = store.get_rule(event.rule_id)
@@ -692,7 +793,7 @@ class SentinelTools:
         kind = "neg" if verdict == "false_alarm" else "pos"
         if event.snapshot_path:
             try:
-                example = store.add_example(spec.id, kind, event_id=event.id, note=note)
+                example = self._example_from_event(spec.id, kind, event, note)
                 result["example_id"] = example.id
             except (StoreError, ValueError, OSError) as exc:
                 result["example_error"] = str(exc)[:200]
@@ -709,7 +810,20 @@ class SentinelTools:
             message = f"Marked event #{event.id} as correct and saved it as a 'yes' example."
         return _ok(**result, rule_id=spec.id, message=message)
 
-    def sentinel_teach(self, args: dict, **_: Any) -> str:
+    def _example_from_event(self, rule_id: str, kind: str, event: EventRecord, note: str) -> Any:
+        """Add an event's photo as an example, shrunk to the example size when possible."""
+        store = self.s.store
+        data = None
+        try:
+            if event.snapshot_path:
+                data = Path(event.snapshot_path).read_bytes()
+        except OSError:
+            data = None
+        if data:
+            return store.add_example(rule_id, kind, _small_jpeg(data), note=note)
+        return store.add_example(rule_id, kind, event_id=event.id, note=note)
+
+    def sentinel_teach(self, args: dict, **kwargs: Any) -> str:
         rule_id = _str_arg(args, "rule_id", required=True, limit=64)
         raw_kind = _str_arg(args, "kind", required=True, limit=16).lower()
         kinds = {"yes": "pos", "pos": "pos", "positive": "pos", "no": "neg", "neg": "neg",
@@ -718,7 +832,7 @@ class SentinelTools:
             raise ToolError("kind must be 'yes' (should trigger) or 'no' (should not)")
         kind = kinds[raw_kind]
         note = _str_arg(args, "note", limit=500)
-        spec = self._rule(rule_id)
+        spec = self._rule(rule_id, self._caller(kwargs))
         store = self.s.store
         image_path = _str_arg(args, "image_path", limit=4096)
         event_id = _int_arg(args, "event_id")
@@ -727,12 +841,16 @@ class SentinelTools:
         if given != 1:
             raise ToolError("give exactly one of image_path, event_id or from_source=true")
         if event_id is not None:
-            if store.get_event(event_id) is None:
+            event = store.get_event(event_id)
+            caller = self._caller(kwargs)
+            owner = store.get_rule(event.rule_id) if event is not None else None
+            if event is None or (is_chat_origin(caller) and (
+                    owner is None or not same_chat(owner.origin, caller))):
                 raise ToolError(f"no event #{event_id}")
-            example = store.add_example(spec.id, kind, event_id=event_id, note=note)
+            example = self._example_from_event(spec.id, kind, event, note)
         elif from_source:
             frame = self.s.engine.grab_frame(spec.source)
-            jpeg = encode_jpeg(frame)
+            jpeg = encode_jpeg(frame, max_side=EXAMPLE_MAX_SIDE, quality=EXAMPLE_JPEG_QUALITY)
             if jpeg is None:
                 raise ToolError("could not encode the current frame (is OpenCV installed?)")
             example = store.add_example(spec.id, kind, jpeg, note=note)

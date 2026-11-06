@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .alerts import GATEWAY_INJECTION_YAML, capture_origin, is_chat_origin, same_chat
 from .runtime import Sentinel
 
 logger = logging.getLogger(__name__)
@@ -39,16 +40,17 @@ class SentinelCommand:
         arg = parts[1] if len(parts) > 1 else ""
         try:
             route = self._remember(kwargs)
+            caller = self._caller(kwargs)
             if sub == "here":
-                return self.here(arg, route, kwargs)
+                return self.here(arg, route, kwargs, caller)
             if sub in ("status", "st"):
-                return self.status()
+                return self.status(caller)
             if sub in ("list", "ls", "rules"):
-                return self.list_rules()
+                return self.list_rules(caller)
             if sub in ("pause", "resume"):
-                return self.set_enabled(arg, sub == "resume")
+                return self.set_enabled(arg, sub == "resume", caller)
             if sub == "test":
-                return self.test(arg)
+                return self.test(arg, caller)
             if sub == "budget":
                 return self.budget()
             if sub in ("help", "-h", "--help"):
@@ -66,15 +68,32 @@ class SentinelCommand:
             logger.debug("sentinel: could not remember route: %s", exc)
             return {}
 
+    def _caller(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Who is typing: the command keywords, the session surface and any known route."""
+        try:
+            return capture_origin(kwargs, self.s.ctx, routes=self.s.routes)
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def _visible_rules(self, caller: dict[str, Any]) -> list[Any]:
+        """Rules the caller may see: all for local sessions, only its own in a messaging chat."""
+        return [r for r in self.s.store.list_rules() if same_chat(r.origin, caller)]
+
     # -- subcommands
 
-    def here(self, target: str, route: dict[str, str], kwargs: dict[str, Any]) -> str:
-        """Send alerts of this session's rules (or ``<id>`` / ``all``) to this chat."""
+    def here(self, target: str, route: dict[str, str], kwargs: dict[str, Any],
+             caller: dict[str, Any] | None = None) -> str:
+        """Send alerts of this session's rules (or ``<id>`` / ``all``) to this chat.
+
+        In a messaging chat only rules that already belong to that chat can be moved; a
+        local session may move any rule.
+        """
         if not route.get("session_key"):
-            return ("This chat did not identify itself (no session key), so alerts cannot be "
-                    "routed here. Local sessions need no setup.")
-        session_id = str(kwargs.get("session_id") or "")
-        rules = self.s.store.list_rules()
+            return ("This session did not identify itself (no session key), so alerts cannot "
+                    "be routed here.")
+        caller = caller if caller is not None else {}
+        session_id = str(kwargs.get("session_id") or route.get("session_key") or "")
+        rules = self._visible_rules(caller)
         if target and target.lower() != "all":
             rules = [r for r in rules if r.id == target]
             if not rules:
@@ -91,16 +110,18 @@ class SentinelCommand:
                 engine.update_rule(saved)
             bound.append(saved.id)
         if not bound:
-            return ("Alerts for rules created in this chat from now on will come here. "
+            return ("Alerts for rules created in this session from now on will come here. "
                     "Use /sentinel here all to move existing rules too.")
         return f"Alerts for {', '.join(bound)} will now come to this chat."
 
-    def status(self) -> str:
+    def status(self, caller: dict[str, Any] | None = None) -> str:
         head = f"hermes-sentinel {self.version}".strip()
         try:
-            rules = self.s.store.list_rules()
+            rules = self._visible_rules(caller or {})
         except Exception as exc:  # noqa: BLE001
             return f"{head}: storage unavailable ({exc})."
+        scoped = is_chat_origin(caller)
+        visible = {r.id for r in rules}
         active = sum(1 for r in rules if r.enabled)
         engine = self.s.engine_if_built
         if engine is not None and engine.running:
@@ -113,14 +134,27 @@ class SentinelCommand:
         if engine is not None:
             st = engine.status()
             for src in st["sources"]:
+                if scoped and not visible.intersection(src["rules"]):
+                    continue
+                if scoped:
+                    src = {**src, "rules": [r for r in src["rules"] if r in visible]}
                 extra = f" ({src['error']})" if src["error"] else ""
                 lines.append(f"  source {src['source']}: {_yesno(src['online'])}{extra}, "
                              f"{src['frames']} frames, rules {', '.join(src['rules'])}")
             alerts = st["alerts"]
-            lines.append(f"  events fired: {st['events_fired']}; alerts sent {alerts['sent']}, "
-                         f"rate-limited {alerts['suppressed']}, failed {alerts['failed']}")
-            if st["last_error"]:
+            if not scoped:
+                lines.append(f"  events fired: {st['events_fired']}; alerts sent "
+                             f"{alerts['sent']}, rate-limited {alerts['suppressed']}, "
+                             f"failed {alerts['failed']}")
+            if st["last_error"] and not scoped:
                 lines.append(f"  last error: {st['last_error']}")
+        blocked = self.s.alerter.delivery_blocked()
+        if blocked:
+            lines.append("  " + blocked.replace("\n", "\n  "))
+        else:
+            lines.append("  Alerts are injected into the chat; outside the classic CLI Hermes "
+                         "needs this in config.yaml (off by default):\n  "
+                         + GATEWAY_INJECTION_YAML.replace("\n", "\n  "))
         try:
             lines.append("  " + self.s.budget.status().describe())
         except Exception as exc:  # noqa: BLE001
@@ -129,8 +163,8 @@ class SentinelCommand:
             lines.append(f"  config: {problem}")
         return "\n".join(lines)
 
-    def list_rules(self) -> str:
-        rules = self.s.store.list_rules()
+    def list_rules(self, caller: dict[str, Any] | None = None) -> str:
+        rules = self._visible_rules(caller or {})
         if not rules:
             return "No watch rules yet. Ask Hermes to watch something, e.g. \"watch my webcam " \
                    "and tell me if someone takes my mug\"."
@@ -145,10 +179,12 @@ class SentinelCommand:
                          f"{last_text}")
         return "\n".join(lines)
 
-    def set_enabled(self, rule_id: str, enabled: bool) -> str:
+    def set_enabled(self, rule_id: str, enabled: bool, caller: dict[str, Any] | None = None) -> str:
         if not rule_id:
             return USAGE
         spec = self.s.store.get_rule(rule_id)
+        if spec is not None and not same_chat(spec.origin, caller or {}):
+            spec = None
         if spec is None:
             return f"No rule {rule_id!r}. Try /sentinel list."
         saved = self.s.store.upsert_rule(spec.with_changes(enabled=enabled))
@@ -158,9 +194,12 @@ class SentinelCommand:
             self.s.engine.update_rule(saved)
         return f"{'Resumed' if enabled else 'Paused'} rule {rule_id}."
 
-    def test(self, rule_id: str) -> str:
+    def test(self, rule_id: str, caller: dict[str, Any] | None = None) -> str:
         if not rule_id:
             return USAGE
+        spec = self.s.store.get_rule(rule_id)
+        if spec is not None and not same_chat(spec.origin, caller or {}):
+            return f"Test of {rule_id} failed: no such rule"
         result = self.s.engine.test_rule(rule_id)
         if not result.get("ok"):
             return f"Test of {rule_id} failed: {result.get('error')}"

@@ -14,6 +14,9 @@ Data flow per source::
 * **Gate before judge**: a frame is judged only when the rule's gate reports a change, the
   gate's periodic idle tick is due, or the rule is collecting k-of-n confirmation verdicts
   (``candidate`` state; spaced ``max(confirm_interval, hold / (n - 1))`` apart).
+* **Cost guards**: rules in ``cooldown`` are not queued (their verdicts could not fire),
+  and the default gate ticks ``trigger`` rules at most every 6 h (condition/absence rules use
+  ``idle_check_seconds``).
 * **Bounded queue**: at most one queued job per rule (a newer frame replaces the queued one)
   and ``queue_size`` jobs overall; when full the oldest job is dropped. A rule is never
   judged by two workers at once, so verdicts reach its state machine in order.
@@ -28,6 +31,12 @@ Data flow per source::
   same profile from opening the same camera twice. A process that loses keeps retrying in a
   standby thread and takes over when the owner exits.
 
+* **Multiplexing limit**: a capture thread runs in a copy of the context of the call that
+  started it (a tool or command call), so contextvars such as Hermes' secret scope are
+  visible to ``${SECRET}`` placeholders. Rules loaded at boot, or picked up by the periodic
+  store sync, have no such scope: a camera that needs a secret stays offline there until a
+  tool call creates or resumes its rule.
+
 Every thread is a daemon and :meth:`Engine.stop` joins them all. ``threaded=False`` builds an
 engine that never starts threads; tests drive it with :meth:`step_source`,
 :meth:`run_pending_judgements` and :meth:`maintenance`, deterministically.
@@ -35,6 +44,7 @@ engine that never starts threads; tests drive it with :meth:`step_source`,
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import math
 import os
@@ -60,7 +70,9 @@ logger = logging.getLogger(__name__)
 __all__ = ["Engine", "EngineSettings", "ProcessLock", "default_source_key"]
 
 MAX_ERROR_TEXT = 240
+TRIGGER_IDLE_MIN_SECONDS = 6 * 3600.0
 EXAMPLE_CACHE_SIZE = 32
+EXAMPLE_CACHE_BYTES = 16 * 1024 * 1024  # examples are small now; cap the cache by bytes too
 MAX_EXAMPLE_FILE_BYTES = 4 * 1024 * 1024
 
 
@@ -81,11 +93,12 @@ class EngineSettings:
     sync_interval: float = 30.0
     stop_timeout: float = 5.0
     max_frame_age: float = 5.0
+    judge_error_rearm: float = 600.0
 
     def __post_init__(self) -> None:
         for name in ("capture_interval", "confirm_interval", "backoff_initial", "backoff_max",
                      "judge_backoff_initial", "judge_backoff_max", "scheduler_interval",
-                     "sync_interval", "stop_timeout", "max_frame_age"):
+                     "sync_interval", "stop_timeout", "max_frame_age", "judge_error_rearm"):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be a positive number")
@@ -224,7 +237,8 @@ class _SourceWorker:
     frames: int = 0
     thread: threading.Thread | None = None
     stop: threading.Event = field(default_factory=threading.Event)
-    lock: threading.RLock = field(default_factory=threading.RLock)
+    lock: threading.RLock = field(default_factory=threading.RLock)  # state swaps only, no I/O
+    latest_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 # --------------------------------------------------------------------------- engine
@@ -281,7 +295,9 @@ class Engine:
         self._running = False
         self._standing_by = False
         self._next_sync = 0.0
-        self._judge_error_notified = False
+        self._shutdown = False
+        # per source key: [notice sent, time of first success since the last failure]
+        self._judge_errors: dict[str, list[Any]] = {}
         self._fired = 0
         self._examples: OrderedDict[tuple[str, float], bytes] = OrderedDict()
         self._examples_lock = threading.Lock()
@@ -302,14 +318,21 @@ class Engine:
         """Load rules from the store and start the threads. Idempotent.
 
         Returns ``False`` (and starts a standby retry thread) when another process owns the
-        engine for this data directory.
+        engine for this data directory, and always ``False`` once :meth:`stop` has been called
+        (an engine is never restarted after shutdown).
         """
+        return self._start(allow_standby=True)
+
+    def _start(self, *, allow_standby: bool) -> bool:
         with self._lock:
+            if self._shutdown:
+                return False
             if self._running:
                 return True
             if self._process_lock is not None and not self._process_lock.acquire():
                 self.last_error = "another Hermes process is already running Sentinel"
-                self._start_standby_locked()
+                if allow_standby:
+                    self._start_standby_locked()
                 return False
             self._stop.clear()
             self._standing_by = False
@@ -334,18 +357,17 @@ class Engine:
             return True
 
     def _start_standby_locked(self) -> None:
+        if self._shutdown:
+            return
         self._standing_by = True
         if not self._threaded or (self._standby is not None and self._standby.is_alive()):
             return
-        self._stop.clear()
 
         def standby() -> None:
             while not self._stop.wait(self.settings.sync_interval):
-                if self._process_lock is not None and self._process_lock.acquire():
-                    self._process_lock.release()  # start() re-acquires
-                    self._standby = None
-                    if self.start():
-                        return
+                # Take over in place: never spawns another standby thread.
+                if self._start(allow_standby=False):
+                    return
 
         self._standby = threading.Thread(target=standby, name="sentinel-standby", daemon=True)
         self._standby.start()
@@ -355,6 +377,7 @@ class Engine:
         timeout = self.settings.stop_timeout if timeout is None else float(timeout)
         deadline = time.monotonic() + max(0.0, timeout)
         with self._lock:
+            self._shutdown = True
             self._stop.set()
             was_running = self._running
             self._running = False
@@ -373,8 +396,16 @@ class Engine:
             if t is not None and t is not current and t.is_alive():
                 t.join(max(0.0, deadline - time.monotonic()))
         for worker in workers:
-            self._close_worker_source(worker)
+            thread = worker.thread
             worker.thread = None
+            if thread is not None and thread is not current and thread.is_alive():
+                # Stuck in open()/read(): close from a helper so stop() never blocks on it.
+                threading.Thread(
+                    target=self._close_worker_source, args=(worker,),
+                    name="sentinel-close", daemon=True,
+                ).start()
+            else:
+                self._close_worker_source(worker)
         with self._qcond:
             for job in self._queue:
                 rt = self._rules.get(job.rule_id)
@@ -391,8 +422,13 @@ class Engine:
     def _default_gate(self, spec: RuleSpec) -> Any:
         from .gate import ChangeGate, GateConfig  # numpy is only needed once frames flow
 
+        # Idle ticks are for condition/absence rules. A trigger rule needs real changes (plus
+        # the start-up look), so its safety-net tick is stretched to TRIGGER_IDLE_MIN_SECONDS.
+        idle = self.config.idle_check_seconds
+        if spec.mode == "trigger" and idle > 0:
+            idle = max(idle, TRIGGER_IDLE_MIN_SECONDS)
         return ChangeGate(
-            GateConfig(idle_check_seconds=self.config.idle_check_seconds),
+            GateConfig(idle_check_seconds=idle),
             roi=spec.roi,
             clock=self._clock,
         )
@@ -504,20 +540,24 @@ class Engine:
         if not self._threaded or (worker.thread is not None and worker.thread.is_alive()):
             return
         worker.stop.clear()
+        # Run in a copy of the starting thread's context so contextvars (e.g. Hermes' secret
+        # scope under multiplexing) set by the tool call that created/resumed the rule are
+        # visible to open(); rules started at boot or by the scheduler have none.
+        ctx = contextvars.copy_context()
         worker.thread = threading.Thread(
-            target=self._capture_loop, args=(worker,), name=f"sentinel-capture-{worker.key}"[:60],
-            daemon=True,
+            target=ctx.run, args=(self._capture_loop, worker),
+            name=f"sentinel-capture-{worker.key}"[:60], daemon=True,
         )
         worker.thread.start()
 
     def _close_worker_source(self, worker: _SourceWorker) -> None:
-        with worker.lock:
+        with worker.lock:  # swap state only; close() may block, so it runs outside the lock
             source, worker.is_open = worker.source, False
-            if source is not None:
-                try:
-                    source.close()
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("sentinel: closing %s failed: %s", worker.key, exc)
+        if source is not None:
+            try:
+                source.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("sentinel: closing %s failed: %s", worker.key, exc)
 
     def _capture_loop(self, worker: _SourceWorker) -> None:
         interval = self.settings.capture_interval
@@ -560,33 +600,40 @@ class Engine:
         frame: Any = None
         with worker.lock:
             rule_ids = sorted(worker.rule_ids)
-            if not worker.is_open:
-                if now < worker.next_attempt:
-                    return "waiting"
-                try:
-                    if worker.source is None:
-                        worker.source = self._source_factory(worker.spec)
-                    worker.source.open()
+            is_open, source = worker.is_open, worker.source
+        # open()/read() can block for seconds: never hold worker.lock across them (the source
+        # serialises itself), so stop() and grab_frame() are never stuck behind a reconnect.
+        if not is_open:
+            if now < worker.next_attempt:
+                return "waiting"
+            try:
+                if source is None:
+                    source = self._source_factory(worker.spec)
+                    worker.source = source
+                source.open()
+                with worker.lock:
                     worker.is_open = True
-                except Exception as exc:  # noqa: BLE001 - every source failure is handled
-                    notice = self._source_failed(worker, exc, now)
-                    outcome = "offline"
-            if outcome == "frame":
-                try:
-                    _ts, frame = worker.source.read()
-                except SourceNotReady:
-                    return "not_ready"
-                except Exception as exc:  # noqa: BLE001
-                    with suppress(Exception):
-                        worker.source.close()
+            except Exception as exc:  # noqa: BLE001 - every source failure is handled
+                notice = self._source_failed(worker, exc, now)
+                outcome = "offline"
+        if outcome == "frame":
+            try:
+                _ts, frame = source.read()
+            except SourceNotReady:
+                return "not_ready"
+            except Exception as exc:  # noqa: BLE001
+                with suppress(Exception):
+                    source.close()
+                with worker.lock:
                     worker.is_open = False
-                    notice = self._source_failed(worker, exc, now)
-                    outcome = "offline"
-                else:
-                    notice = self._source_ok(worker)
+                notice = self._source_failed(worker, exc, now)
+                outcome = "offline"
+            else:
+                notice = self._source_ok(worker)
+                with worker.latest_lock:
                     worker.latest = (now, frame)
-                    worker.frames += 1
-        # Notices and gating run outside worker.lock (lock order: _lock before worker.lock).
+                worker.frames += 1
+        # Notices and gating run outside any worker lock.
         if notice:
             for origin in self._origins_for(rule_ids):
                 self.alerter.notice(notice, origin=origin)
@@ -666,6 +713,11 @@ class Engine:
             with self._lock:
                 rt = self._rules.get(rule_id)
             if rt is None or not rt.spec.enabled or not self._schedule_active(rt.spec):
+                continue
+            with suppress(Exception):
+                rt.machine.poll(now)
+            if rt.machine.state is RuleState.COOLDOWN:
+                # A verdict could not fire (and would be thrown away): do not pay for it.
                 continue
             try:
                 if rt.gate is None:
@@ -797,8 +849,12 @@ class Engine:
             return None
         with self._examples_lock:
             self._examples[key] = data
-            while len(self._examples) > EXAMPLE_CACHE_SIZE:
-                self._examples.popitem(last=False)
+            total = sum(len(v) for v in self._examples.values())
+            while self._examples and (
+                len(self._examples) > EXAMPLE_CACHE_SIZE or total > EXAMPLE_CACHE_BYTES
+            ):
+                _, dropped = self._examples.popitem(last=False)
+                total -= len(dropped)
         return data
 
     def _reserve_budget(self, spec: RuleSpec) -> bool:
@@ -825,6 +881,10 @@ class Engine:
         spec = rt.spec
         if not self._schedule_active(spec):
             return
+        if rt.machine.state is RuleState.COOLDOWN:
+            return  # queued before the rule fired; the verdict could not count
+        if self._stop.is_set():
+            return
         if not self._reserve_budget(spec):
             rt.budget_skips += 1
             return
@@ -832,6 +892,8 @@ class Engine:
             job.frame, spec.question, rule_id=spec.id, roi=spec.roi,
             examples=self._load_examples(spec.id),
         )
+        if self._stop.is_set():
+            return  # unloaded while the model was thinking: no store writes, no alerts
         now = self._clock()
         rt.checks += 1
         rt.last_verdict = verdict
@@ -842,7 +904,7 @@ class Engine:
             return
         rt.consecutive_errors = 0
         rt.judge_backoff_until = 0.0
-        self._judge_error_notified = False
+        self._judge_succeeded(rt.source_key, now)
         step = rt.machine.observe(verdict.match, verdict.confidence, now)
         if step.state is RuleState.CANDIDATE:
             rt.next_confirm_at = now + self._confirm_spacing(spec)
@@ -858,13 +920,26 @@ class Engine:
         )
         rt.judge_backoff_until = now + backoff
         self.last_error = _short_error(verdict.error or "judge failed")
-        if not self._judge_error_notified:
-            self._judge_error_notified = True
+        state = self._judge_errors.setdefault(rt.source_key, [False, None])
+        state[1] = None  # a failure ends the success streak
+        if not state[0]:
+            state[0] = True
             self.alerter.notice(
                 f"Vision checks are failing ({self.last_error}). The camera keeps being "
                 "watched locally and checks resume automatically.",
                 origin=rt.spec.origin,
             )
+
+    def _judge_succeeded(self, source_key: str, now: float) -> None:
+        """Re-arm the judge-error notice only after ``judge_error_rearm`` seconds of
+        uninterrupted success, so a flaky model cannot send a notice per failure episode."""
+        state = self._judge_errors.get(source_key)
+        if state is None or not state[0]:
+            return
+        if state[1] is None:
+            state[1] = now
+        elif now - state[1] >= self.settings.judge_error_rearm:
+            del self._judge_errors[source_key]
 
     def _fire(self, rt: _RuleRuntime, job: _Job, verdict: Verdict) -> None:
         spec = rt.spec
@@ -937,7 +1012,7 @@ class Engine:
             worker = self._workers.get(key)
         stale = None
         if worker is not None:
-            with worker.lock:
+            with worker.latest_lock:
                 latest = worker.latest
             if latest is not None:
                 if self._clock() - latest[0] <= self.settings.max_frame_age:

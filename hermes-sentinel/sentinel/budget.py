@@ -183,8 +183,41 @@ class Budget:
             day_used=day_used,
             day_cap=day_cap,
             exhausted=exhausted,
-            retry_after_seconds=_seconds_to_next_hour(now) if exhausted else 0.0,
+            retry_after_seconds=(
+                self._retry_after(now, hour_used, hour_cap, day_used, day_cap)
+                if exhausted
+                else 0.0
+            ),
         )
+
+    def _retry_after(
+        self, now: float, hour_used: int, hour_cap: int | None, day_used: int,
+        day_cap: int | None,
+    ) -> float:
+        """Seconds until every exhausted cap has room again."""
+        wait = 0.0
+        if hour_cap is not None and hour_used >= hour_cap:
+            wait = _seconds_to_next_hour(now)
+        if day_cap is not None and day_used >= day_cap:
+            wait = max(wait, self._day_retry(now, day_used, day_cap))
+        return wait
+
+    def _day_retry(self, now: float, day_used: int, day_cap: int) -> float:
+        """When enough of the oldest hourly buckets leave the 24 h window to drop below the cap."""
+        fallback = _seconds_to_next_hour(now)
+        buckets_fn = getattr(self._backend, "usage_buckets", None)
+        if buckets_fn is None or day_cap <= 0:
+            return fallback
+        try:
+            buckets = buckets_fn(now)
+        except Exception:  # noqa: BLE001 - a store hiccup must not break status
+            return fallback
+        used = day_used
+        for start, calls in buckets:
+            used -= calls
+            if used < day_cap:
+                return max(0.0, start + 24 * 3600 - now)
+        return fallback
 
     def take_exhausted_notice(self) -> str | None:
         """A notice to post once per exhaustion episode, else ``None``."""

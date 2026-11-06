@@ -202,10 +202,10 @@ class SentinelConfig:
                 raw["idle_check_seconds"], 300.0, 0.0, 7 * 86400.0, "idle_check_seconds", problems
             ),
             retention_days=_as_float(
-                raw["retention_days"], 7.0, 0.0, 3650.0, "retention_days", problems
+                raw["retention_days"], 7.0, 0.01, 3650.0, "retention_days", problems
             ),
             max_storage_mb=_as_float(
-                raw["max_storage_mb"], 500.0, 0.0, 1_000_000.0, "max_storage_mb", problems
+                raw["max_storage_mb"], 500.0, 1.0, 1_000_000.0, "max_storage_mb", problems
             ),
             stream_urls=_as_streams(raw["stream_urls"], problems),
             alert_snapshots=_as_bool(raw["alert_snapshots"], True, "alert_snapshots", problems),

@@ -66,16 +66,30 @@ def test_local_sessions_use_keyless_injection(ctx, origin):
 
 def test_refused_injection_falls_back_to_post(ctx):
     ctx.inject_result = False
-    d = alerts.Alerter(ctx).alert_event(rule(), event(), source_name="cam")
+    d = alerts.Alerter(ctx).alert_event(rule(), event(), source_name="cam", post_fallback=True)
     assert d.ok and d.via == "post"
     assert "MEDIA:/data/snap.jpg" in ctx.posted[-1].text
+
+
+def test_no_post_fallback_from_background_threads(ctx):
+    ctx.inject_result = False
+    d = alerts.Alerter(ctx).alert_event(rule(), event(), source_name="cam")
+    assert not d.ok and d.via == "failed" and len(ctx.posted) == 0
+
+
+def test_post_fallback_never_for_chat_origins(ctx):
+    ctx.inject_result = False
+    origin = {"platform": "telegram", "chat_id": "42", "surface": "telegram"}
+    d = alerts.Alerter(ctx).alert_event(rule(origin=origin), event(), source_name="cam",
+                                        post_fallback=True)
+    assert not d.ok and len(ctx.posted) == 0
 
 
 def test_both_paths_failing_is_reported_not_raised(ctx):
     ctx.inject_result = False
     ctx.post_ok = False
     a = alerts.Alerter(ctx)
-    d = a.alert_event(rule(), event(), source_name="cam")
+    d = a.alert_event(rule(), event(), source_name="cam", post_fallback=True)
     assert not d.ok and d.via == "failed" and "no_conversation" in d.detail
     assert a.stats()["failed"] == 1
 
@@ -88,14 +102,14 @@ def test_raising_host_calls_are_contained():
         def post_message(self, text):
             raise RuntimeError("no session")
 
-    d = alerts.Alerter(Boom()).notice("hello")
+    d = alerts.Alerter(Boom()).notice("hello", post_fallback=True)
     assert not d.ok and d.via == "failed"
 
     class InjectBoom(Boom):
         def post_message(self, text):
             return SimpleNamespace(ok=True)
 
-    assert alerts.Alerter(InjectBoom()).notice("hello").via == "post"
+    assert alerts.Alerter(InjectBoom()).notice("hello", post_fallback=True).via == "post"
 
 
 # --------------------------------------------------------------------------- rate limits
@@ -149,9 +163,9 @@ def test_zero_caps_suppress_everything(ctx):
 def test_message_contents():
     text = alerts.format_event_message(rule(), event(), source_name="camera:0")
     lines = text.splitlines()
-    assert lines[0] == "[Sentinel alert] mug taken (confidence 0.92)"
-    assert 'Rule r1 ("mug taken") on camera:0. Event #7' in lines[1]
-    assert "Evidence: the desk is empty" in text
+    assert lines[0] == "[Sentinel alert] Rule r1 fired on camera:0 (confidence 0.92)."
+    assert 'Rule r1 ("mug taken"). Event #7' in lines[1]
+    assert "> Caption: mug taken" in lines and "> Evidence: the desk is empty" in lines
     assert "MEDIA:/data/snap.jpg" in lines
     assert "event_id=7" in text and "false_alarm" in text
     assert "carry out" not in text
@@ -164,7 +178,10 @@ def test_message_without_media_and_with_action():
                                        source_name="cam")
     assert "MEDIA:" not in text and "confidence" not in text.splitlines()[0]
     assert "the watch condition was seen" in text
-    assert text.splitlines()[-1] == "Then carry out the rule's action: turn on the porch light"
+    lines = text.splitlines()
+    assert "Then carry out the rule's action: turn on the porch light" in lines
+    assert lines.index("Then carry out the rule's action: turn on the porch light") < lines.index(
+        "--- BEGIN UNTRUSTED OBSERVATION ---")
     assert "MEDIA:" not in alerts.format_event_message(rule(), event(), source_name="c",
                                                        include_media=False)
 
@@ -214,7 +231,7 @@ def test_routes_are_tried_in_order_until_accepted():
     host = Picky()
     origin = {"session_key": "k", "platform": "telegram", "chat_id": "1", "session_id": "s"}
     d = alerts.Alerter(host).alert_event(rule(origin=origin), event(), source_name="c")
-    assert d.via == "keyless" and host.tried == ["k", "origin", "keyless"]
+    assert d.via == "failed" and host.tried == ["k", "origin"]  # chat: never key-less
     host.tried.clear()
     alerts.Alerter(host).notice("x", origin={"session_id": "s", "surface": "desktop"})
     assert host.tried == ["s", "keyless"]
