@@ -36,7 +36,18 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 - Alert delivery by `inject_message`, with chat isolation, sticky "delivery blocked" explanation and prompt-injection-resistant alert text.
 - Single-owner engine via a lock file; a second Hermes process on the same profile stands by.
 - Test harness: fake plugin context, fake LLM, Hermes module shims, synthetic scenes.
+- `file:` video-file source (`.mp4 .mkv .mov .avi .webm .m4v`; `?loop=true`, `?speed=N`) for repeatable demos and tests. Without looping the watcher stops with one "finished" notice. Paths must be regular readable files and are never passed to OpenCV as URLs.
+- Camera secrets: four optional whole-URL secret slots (`SENTINEL_STREAM_URL_1` to `_4`, `type: secret`), usable as `${SENTINEL_STREAM_URL_1}`; an in-memory secret cache so capture threads can reconnect on a multiplexing gateway; a "waiting for secret scope" status (retried every 5 s, no offline notice) and a "Camera secrets" row in `/sentinel setup`.
+- Slow-drift detection in the change gate: a second reference (the last judged frame) catches gradual, compact, local changes such as a rising level or a slowly opening door. Large lighting changes are filtered out; thresholds are `GateConfig` fields, not plugin settings.
+- Motion input: rules about movement (keyword-detected, set with the `motion` argument of `sentinel_watch` and `sentinel_update` edit, or in the rule compiler's schema) are judged on up to 3 recent frames in time order, in one call, within 1.2 MB of images.
+- Batched judging: rules that fire on the same captured frame share one vision call and one budget unit. Settings `batch_judging` (true) and `batch_max_rules` (4, ceiling 8). A malformed reply falls back to separate calls.
+- Second opinion for borderline positive verdicts: a stricter, differently worded look at a crop of the changed region (up to 1536 px). Settings `second_opinion` (true), `second_opinion_band_low` / `_high` (0.5 / 0.8), `second_opinion_per_hour` (6). Costs one budget unit.
+- Setting `motion_frames` (3).
+- Inverse calibration: a correct confirmation lowers the rule's confidence threshold by 0.01 (never below 0.6) in addition to the existing +0.05 on a false alarm.
+- `/sentinel setup --test-delivery` and `sentinel_setup_check` with `test_delivery=true`: one opt-in test message that reports whether Hermes accepted injection, with the exact `allow_gateway_injection` YAML when blocked.
+- `/sentinel here` without an id binds this session's rules, else the only unbound rule, else lists the candidates with the exact commands. The chat route is learned from any `/sentinel` subcommand, which also binds that session's route-less rules; `/sentinel list` and `sentinel_rules` show hints for rules created in an earlier session of the chat.
 
 ### Not included
 
-- Audio, video-site streams (for example YouTube).
+- Audio, and video-site streams (for example YouTube): sites' terms and the catalog's ban on downloaded binaries rule out the extraction route.
+- A way to check `allow_gateway_injection` ahead of time: Hermes does not expose it to plugins, so only the opt-in delivery test exists.

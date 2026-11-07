@@ -39,6 +39,8 @@ Pick the fastest vision model that reads a mug on a desk reliably; test with `se
 - Phone on a stand with Telegram open on the demo bot chat, notifications on, screen recording on the phone (or film the phone with a second camera).
 - Blur or crop anything private in the room, notifications from other apps, bot token, and the Hermes home path.
 
+**Delivery check.** In the Telegram chat run `/sentinel setup --test-delivery`; if it reports blocked, add the `allow_gateway_injection` YAML it prints and restart.
+
 **Dry run.** Create the rule, take the mug, confirm the alert arrives, send "false alarm" once, then delete the rule and `/sentinel list` is empty. Time the alert: if it is over 15 s, change the model or lower latency before filming.
 
 **Pre-warm for the take.** Run `/sentinel status` once in the Telegram chat and send `/sentinel here` there, so the route is known. Keep the Desktop app open on the Sentinel pane in a second window.
@@ -73,6 +75,9 @@ Optional cut-in if time remains (do not extend past 90 s): `/sentinel budget`.
 - **No alert at all:** run `/sentinel status`. A delivery warning means `allow_gateway_injection` is missing or `/sentinel here` was not sent in the Telegram chat. A judge error means the `sentinel_vision` model is not vision-capable. Use `/sentinel test <rule_id>` to see what the judge says about the current frame.
 - **Backup content:** record the working take plus a B-roll of the Desktop pane and a screen recording of the history question; if live capture fails on the day, use the recorded Telegram clip and say nothing false about timing (the on-screen "skipped" marker stays).
 - **Backup source:** `folder:/path` with images dropped in by hand is deterministic, but say so on screen; prefer the webcam for the main take.
+- **Reliable fallback for the live take: a `file:` loop.** Record the 10 to 15 s webcam clip once (empty desk for about 4 s, a hand takes the mug, a few more seconds) and keep it outside the repo, for example `~/demo/mug.mp4`. Then ask: `watch file:/home/<you>/demo/mug.mp4?loop=true&speed=15 and tell me if someone takes my coffee mug, cooldown 30 seconds`. Sentinel reads about 2 frames per second whatever the clip's rate, so use `speed=` of fps divided by 2 (15 for 30 fps, 30 for 60 fps) to play it in real time. The loop restarts the clip, so the mug reappears; a trigger rule latches after an alert and needs a confirmed opposite verdict before it can fire again, so rehearse how many passes it takes and film the take that fires cleanly. The same chat, alerts, Desktop pane and history work as with a camera. Rehearse it: check with `/sentinel status` that the source is `watching`, and use `/sentinel test <rule_id>` once to see the judge's view of the current frame.
+- **Be honest about it.** Say "recorded clip" on screen (a small caption such as `file: source, looped recording`) if the take uses it; do not present it as live. Use the live webcam for the main take when it works, and the file source for the backup take and for retakes.
+- **Dry-run without a camera or model cost:** point `file:` at the clip, run `/sentinel setup`, then `/sentinel setup --test-delivery` in the Telegram chat before filming to prove the alert path (it sends one small message and starts one agent turn; it is never automatic).
 
 ## Recording tips
 
