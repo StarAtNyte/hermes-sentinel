@@ -18,6 +18,11 @@ BLOCKED_TEXT = (
     "Unless you use the classic CLI, add this to your Hermes config.yaml and restart:\n"
     + GATEWAY_INJECTION_YAML
 )
+#: Hermes attaches an image only when the reply holds a ``MEDIA:<path>`` line.
+MEDIA_INSTRUCTION = (
+    "To attach the photo, copy the MEDIA: line shown below into your reply on its own line, "
+    'exactly as written and unchanged. Do not rewrite it as "Photo:" text or a plain path.'
+)
 _MEDIA_RE = re.compile(r"(?i)media\s*:")
 _MARKER_RE = re.compile(r"(?i)untrusted\s+observation")
 
@@ -80,6 +85,8 @@ def _instructions(rule: Any, event: Any, has_media: bool) -> list[str]:
         + f". If they say it is wrong, call sentinel_feedback with event_id={event.id} and "
         'verdict "false_alarm" (or "correct").'
     ]
+    if has_media:
+        lines.append(MEDIA_INSTRUCTION)
     if getattr(rule, "action", "notify") == "agent" and getattr(rule, "action_prompt", ""):
         lines.append(f"Then carry out the rule's action: {rule.action_prompt}")
     lines.append(
