@@ -58,6 +58,17 @@ def _label(spec: Any) -> str:
     return str(spec.text or spec.question)[:50]
 
 
+def rebound_origin(origin: Mapping[str, Any], caller: Mapping[str, Any]) -> dict[str, Any]:
+    """The origin a rule gets when ``caller`` resumes it: the caller's live session.
+
+    The old origin is kept when the caller does not identify a session, so a resume from an
+    anonymous context never erases a working route.
+    """
+    if not (clean_value(caller.get("session_id")) or clean_value(caller.get("session_key"))):
+        return dict(origin)
+    return dict(caller)
+
+
 def bind_rules(
     store: Any, engine: Any, specs: Sequence[Any], route: Mapping[str, str]
 ) -> list[str]:

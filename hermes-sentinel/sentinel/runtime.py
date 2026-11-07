@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from .alerts import Alerter, RouteBook
+from .alerts import Alerter, HeldAlerts, RouteBook
 from .budget import Budget
 from .config import SentinelConfig
 from .engine import Engine, EngineSettings
@@ -50,6 +50,7 @@ BOOT_DELAY_SECONDS = 25.0  # short-lived hermes commands exit before the cameras
 ALERTS_PER_HOUR = 20  # every injected alert is a full agent turn on the main model
 NOTICES_PER_HOUR = 6
 ROUTES_FILENAME = "routes.json"
+HELD_FILENAME = "held_alerts.json"
 
 
 class Sentinel:
@@ -59,6 +60,7 @@ class Sentinel:
     _budget: Budget | None = None
     _engine: Engine | None = None
     _routes: RouteBook | None = None
+    _held: HeldAlerts | None = None
     _closed = False
     _boot_timer: threading.Timer | None = None
 
@@ -95,12 +97,16 @@ class Sentinel:
         self._lock = threading.RLock()  # guards the lazy services below and the closed flag
         self._pruner = BackgroundPruner()
         self.judge = Judge(lambda: getattr(ctx, "llm", None), clock=clock)
-        self.alerter = Alerter(
+        self.alerter = self._build_alerter(ctx, clock)
+
+    def _build_alerter(self, ctx: Any, clock: Callable[[], float]) -> Alerter:
+        return Alerter(
             ctx,
             clock=clock,
             include_media=self.config.alert_snapshots,
             global_per_hour=ALERTS_PER_HOUR,
             notices_per_hour=NOTICES_PER_HOUR,
+            held=lambda: self.held_alerts,
         )
 
     def _default_store(self, cfg: SentinelConfig) -> Store:
@@ -165,6 +171,19 @@ class Sentinel:
                     path = None
                 self._routes = RouteBook(path)
             return self._routes
+
+    @property
+    def held_alerts(self) -> HeldAlerts:
+        """Alerts no route accepted, per rule (persisted next to the store)."""
+        with self._lock:
+            if self._held is None:
+                try:
+                    path = self.store.data_dir / HELD_FILENAME
+                except (StoreError, OSError, sqlite3.Error) as exc:
+                    logger.warning("sentinel: held alerts kept in memory only: %s", exc)
+                    path = None
+                self._held = HeldAlerts(path)
+            return self._held
 
     @property
     def engine_if_built(self) -> Engine | None:

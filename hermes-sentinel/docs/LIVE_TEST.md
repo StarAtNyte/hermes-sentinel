@@ -171,6 +171,11 @@ Date: 2026-11-07. Rule: "a person raises their hand above shoulder level" on `ca
 - Replay: the frames saved during run 3 (hand raised for about 16 s, head and shoulders in frame) were turned into a looping video and used as a `file:` source. The rule fired once at 0.99 confidence ("The person holds one hand raised above their head.") after 3 vision calls.
 - Conclusion: detection of a clearly visible raised hand works. A brief gesture is not enough for a rule that confirms 2 of 3 checks 10 s apart, so hold the pose for 20 to 30 seconds, or use `confirm_k: 1` for gestures. A single live webcam alert on the fixed code is still to be captured.
 
+## Live run 5: a real alert dropped after a restart
+
+- Live run 5 on the real webcam fired at 0.99 confidence at 21:23:19, but the alert was dropped: the rule's stored origin session no longer existed after Hermes restarted, and `ctx.inject_message` was refused ("not a live local session"). The event was stored; the user saw nothing.
+- Fix: `/sentinel resume <id>` rebinds the rule to the calling live session, and a refused alert is held per rule and listed by `/sentinel status` and `/sentinel list` until it is delivered or the rule is resumed. Covered by tests; not yet re-run live.
+
 ## Not yet tested
 
 - Hermes Desktop: the Sentinel pane and live rendering of the injected alert.

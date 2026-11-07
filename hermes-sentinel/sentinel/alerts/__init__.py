@@ -8,6 +8,7 @@ local CLI. Nothing here waits for a human (catalog rule 12). Model-written text 
 an untrusted observation. Rate limits: per rule, per hour, and a separate notice cap.
 """
 
+from .books import HeldAlert, HeldAlerts, RouteBook, describe_held
 from .chat_hints import effective_origin, has_route, route_hint, visible_to
 from .delivery import Alerter, Delivery
 from .formatting import (
@@ -20,7 +21,6 @@ from .formatting import (
     sanitize_untrusted,
 )
 from .rate_limit import HourlyWindow
-from .route_book import RouteBook
 from .routing import (
     LOCAL_SURFACES,
     MAX_ORIGIN_VALUE,
@@ -29,7 +29,7 @@ from .routing import (
     route_from_kwargs,
     same_chat,
 )
-from .rule_binding import HerePlan, adopt_session_rules, bind_rules, plan_here
+from .rule_binding import HerePlan, adopt_session_rules, bind_rules, plan_here, rebound_origin
 from .self_test import DeliveryTestResult, format_delivery_test, run_delivery_test
 
 __all__ = [
@@ -43,18 +43,22 @@ __all__ = [
     "Alerter",
     "Delivery",
     "DeliveryTestResult",
+    "HeldAlert",
+    "HeldAlerts",
     "HerePlan",
     "HourlyWindow",
     "RouteBook",
     "adopt_session_rules",
     "bind_rules",
     "capture_origin",
+    "describe_held",
     "effective_origin",
     "format_delivery_test",
     "format_event_message",
     "has_route",
     "is_chat_origin",
     "plan_here",
+    "rebound_origin",
     "route_hint",
     "run_delivery_test",
     "route_from_kwargs",

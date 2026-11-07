@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .route_book import RouteBook
+from .books import RouteBook
 from .routing import LOCAL_SURFACES, clean_value, is_chat_origin, same_chat
 
 

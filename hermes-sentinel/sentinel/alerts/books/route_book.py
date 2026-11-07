@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import threading
 from collections import OrderedDict
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .routing import clean_value, route_from_kwargs
+from ..routing import clean_value, route_from_kwargs
+from .json_file import read_json_object, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +31,7 @@ class RouteBook:
         self._load()
 
     def _load(self) -> None:
-        if self._path is None or not self._path.is_file():
-            return
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            logger.warning("sentinel: ignoring unreadable routes file: %s", exc)
-            return
-        if not isinstance(data, dict):
-            return
+        data = read_json_object(self._path, "routes")
         for session_id, route in list(data.items())[-self._limit :]:
             if isinstance(session_id, str) and isinstance(route, dict):
                 clean = route_from_kwargs(route)
@@ -48,15 +39,7 @@ class RouteBook:
                     self._routes[session_id] = clean
 
     def _save_locked(self) -> None:
-        if self._path is None:
-            return
-        tmp = self._path.with_suffix(".tmp")
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(self._routes), encoding="utf-8")
-            os.replace(tmp, self._path)
-        except OSError as exc:
-            logger.warning("sentinel: could not save routes: %s", exc)
+        write_json_atomic(self._path, self._routes, "routes")
 
     def remember(self, kwargs: Mapping[str, Any] | None) -> dict[str, str]:
         """Record the route of a slash-command call; returns it (empty if none)."""

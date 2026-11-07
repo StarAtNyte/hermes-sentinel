@@ -9,7 +9,7 @@ from typing import Any
 from ...alerts import GATEWAY_INJECTION_YAML, is_chat_origin, route_hint
 from ...runtime import Sentinel
 from ...storage import StoreError
-from .common import visible_rules
+from .common import held_alert_lines, visible_rules
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,7 @@ def status_text(sentinel: Sentinel, version: str, caller: dict[str, Any] | None 
         lines += _engine_lines(engine, scoped, {r.id for r in rules})
         lines += _pacing_lines(sentinel, engine, rules)
     lines += _delivery_lines(sentinel)
+    lines += ["  " + line for line in held_alert_lines(sentinel, rules)]
     lines.append(_budget_line(sentinel))
     lines += [f"  config: {problem}" for problem in sentinel.config.problems]
     return "\n".join(lines)
@@ -134,4 +135,5 @@ def list_rules_text(sentinel: Sentinel, caller: dict[str, Any] | None = None) ->
         hint = route_hint(spec.origin, caller or {})
         if hint:
             lines.append(f"  note: {hint}")
+    lines += held_alert_lines(sentinel, rules)
     return "\n".join(lines)

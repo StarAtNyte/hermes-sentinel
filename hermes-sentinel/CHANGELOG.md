@@ -17,6 +17,7 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ### Fixed
 
+- After a Hermes restart a rule's stored chat session is no longer live, so the host refused the injection and the alert was lost (the event was stored, the user never saw it). `/sentinel resume <id>` now rebinds the rule to the calling session. An alert no route accepted is held per rule (`held_alerts.json` next to the store), shown by `/sentinel status` and `/sentinel list` as "alert held for rule <id>: run /sentinel resume <id> here to receive it", and cleared when it is delivered or the rule is resumed. Found in live run 5.
 - A rule that had fired kept being judged during its cooldown while the scene kept changing (a person moving in front of a webcam): the cooldown check only looked at the `cooldown` state, but a fired rule sits in `firing` until the scene clears. Judge calls (gate and worker) are now skipped for the whole cooldown. Found in the live webcam test: about 6 calls per minute against a 60 per hour budget.
 - The pane found no Sentinel when the plugin was loaded under a profile-scoped module name; it now scans `sys.modules` and states which process must host it.
 - Source masking covers `snapshot:`/`folder:` prefixes, token-only userinfo and secret RTSP path segments.

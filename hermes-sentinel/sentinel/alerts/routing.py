@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .route_book import RouteBook
+    from .books import RouteBook
 
 logger = logging.getLogger(__name__)
 

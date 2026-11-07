@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import Any
 
-from ...alerts import adopt_session_rules, capture_origin, visible_to
+from ...alerts import adopt_session_rules, capture_origin, describe_held, visible_to
 from ...runtime import Sentinel
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,9 @@ __all__ = [
     "USAGE",
     "adopt_route",
     "caller_origin",
+    "held_alert_lines",
     "remember_route",
+    "take_held_alert",
     "visible_rules",
 ]
 
@@ -59,3 +62,24 @@ def visible_rules(sentinel: Sentinel, caller: dict[str, Any]) -> list[Any]:
     """Rules the caller may see: all for local sessions, only its own in a messaging chat."""
     routes = sentinel.routes
     return [r for r in sentinel.store.list_rules() if visible_to(r.origin, caller, routes)]
+
+
+def held_alert_lines(sentinel: Sentinel, rules: Iterable[Any]) -> list[str]:
+    """One line per rule in ``rules`` that has an undelivered alert."""
+    book = sentinel.held_alerts
+    lines = []
+    for spec in rules:
+        held = book.get(spec.id)
+        if held is not None:
+            lines.append(describe_held(spec.id, held))
+    return lines
+
+
+def take_held_alert(sentinel: Sentinel, rule_id: str) -> str:
+    """Clear the held alert of ``rule_id``; returns a sentence about it, or empty if none."""
+    book = sentinel.held_alerts
+    held = book.get(rule_id)
+    if held is None:
+        return ""
+    book.clear(rule_id)
+    return f" An alert was held while it had no live chat (event #{held.event_id})."

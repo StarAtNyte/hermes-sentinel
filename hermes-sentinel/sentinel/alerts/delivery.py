@@ -9,12 +9,15 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from .books import HeldAlerts
 from .formatting import BLOCKED_TEXT, MAX_MESSAGE_LEN, format_event_message
 from .rate_limit import HourlyWindow
 from .routing import LOCAL_SURFACES, ROUTE_KEYS, clean_value, is_chat_origin
 
 logger = logging.getLogger(__name__)
 
+#: ``Delivery.via`` values that mean the message reached a conversation.
+DELIVERED_VIAS = ("session_key", "origin", "session_id", "keyless", "post")
 #: Least time between two delivery self-tests (each one starts an agent turn).
 TEST_MIN_INTERVAL_SECONDS = 60.0
 _MAX_TRACKED_RULES = 4096
@@ -46,9 +49,14 @@ class Alerter:
         global_per_hour: int = 60,
         notices_per_hour: int = 30,
         include_media: bool = True,
+        held: Callable[[], HeldAlerts] | None = None,
     ) -> None:
-        """Bind to ``ctx`` (needs ``inject_message``; optionally ``post_message``)."""
+        """Bind to ``ctx`` (needs ``inject_message``; optionally ``post_message``).
+
+        ``held``: returns the book that keeps alerts no route accepted (built lazily).
+        """
         self._ctx = ctx
+        self._held = held
         self._clock = clock
         self.per_rule_min_interval = max(0.0, float(per_rule_min_interval))
         self.include_media = bool(include_media)
@@ -217,7 +225,21 @@ class Alerter:
             text = f"[Sentinel alert] rule {rule_id} fired (event #{getattr(event, 'id', '?')})."
         result = self._deliver(text, getattr(rule, "origin", None), post_fallback=post_fallback)
         self._count(result)
+        self._track_held(rule_id, getattr(event, "id", 0), result)
         return result
+
+    def _track_held(self, rule_id: str, event_id: int, result: Delivery) -> None:
+        """Keep a failed alert for the next status; a delivered one clears the older note."""
+        if self._held is None or result.via not in ("failed", *DELIVERED_VIAS):
+            return
+        try:
+            book = self._held()
+            if result.ok:
+                book.clear(rule_id)
+            else:
+                book.hold(rule_id, int(event_id))
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("sentinel: could not track held alert for %s: %s", rule_id, exc)
 
     def notice(
         self, text: str, *, origin: Mapping[str, Any] | None = None, post_fallback: bool = False
