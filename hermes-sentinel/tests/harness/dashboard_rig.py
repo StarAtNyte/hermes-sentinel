@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import importlib.util
 import sys
 from typing import Any
@@ -12,7 +11,7 @@ import numpy as np
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from harness.plugin_loader import PLUGIN_DIR
+from harness.plugin_loader import PLUGIN_DIR, plugin_module, plugin_package
 
 CAM = "camera:7"
 RTSP = "rtsp://admin:hunter2@10.0.0.5:554/stream?token=abc123"
@@ -20,8 +19,9 @@ SECRETS = ("hunter2", "abc123")
 BASE = "/api/plugins/hermes-sentinel"
 
 
-def load_api(name: str = "hermes_dashboard_plugin_hermes-sentinel-test") -> Any:
+def load_api(name: str = "hermes_dashboard_plugin_hermes_sentinel") -> Any:
     """Import plugin_api.py the way Hermes does: standalone, by file path."""
+    plugin_package()
     spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
@@ -30,8 +30,8 @@ def load_api(name: str = "hermes_dashboard_plugin_hermes-sentinel-test") -> Any:
 
 
 def api_module(api: Any, dotted: str) -> Any:
-    """A module of the dashboard package behind ``api``, e.g. ``"common.masking"``."""
-    return importlib.import_module(f"{api.PACKAGE}.{dotted}")
+    """A module of the plugin's ``dashboard_api`` package, e.g. ``"common.masking"``."""
+    return plugin_module(f"sentinel.dashboard_api.{dotted}")
 
 
 def make_client(api: Any) -> TestClient:

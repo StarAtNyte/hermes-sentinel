@@ -16,7 +16,7 @@ Hermes exposes storage and secrets as module functions. The shims install once p
 
 - `plugins.plugin_storage.plugin_data_dir(name)` / `plugin_db(name, filename)`: same name and filename validation as Hermes. The DB opens with WAL, `foreign_keys=ON`, a busy timeout and `check_same_thread=False`.
 - `agent.secret_scope.get_secret(name, default)` / `get_secret_str`: reads only the bound `secrets` dict, never `os.environ`. Every read is recorded.
-- `agent.plugin_llm`: the data classes and `PluginLlmTrustError` from `llm_types`.
+- Hermes `agent.plugin_llm`: the data classes and `PluginLlmTrustError` from `llm_types`.
 
 Each test binds a Hermes home and a secrets dict with `hermes_shims.bind(...)`; the fixtures do this for you.
 
@@ -51,7 +51,7 @@ Constructor knobs: `config` (settings), `entry` (the rest of `plugins.entries.<i
 
 ## FakeLlm (`ctx.llm`)
 
-Checks run in the same order as `agent/plugin_llm.py`:
+Checks run in the same order as Hermes `agent/plugin_llm.py`:
 
 1. Arguments: empty `instructions` or `input` raises `ValueError`.
 2. Trust: a `task` the plugin did not register raises `PluginLlmTrustError`, as does a built-in task without `llm.allow_task_override`. So do `provider`, `model`, `agent_id` and `profile` overrides unless `entry["llm"]` allows them (allowlists included).

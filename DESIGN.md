@@ -56,7 +56,7 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
   MJPEG via cv2), `SnapshotUrlSource` (HTTP JPEG endpoint, urllib), `ScreenSource` (mss,
   monitor or region), `FolderSource` (newest image in a dir). `open_source(spec)` factory,
   `list_sources()` probe (camera indexes 0-4, monitors).
-- `gate.py` — `ChangeGate`: downscale to 320px wide, grayscale, blur, brightness-normalise
+- `vision/gate/change_gate.py` — `ChangeGate`: downscale to 320px wide, grayscale, blur, brightness-normalise
   (divide by frame mean, rejects lighting flicker), running background (EMA), absdiff, threshold,
   morphological open, changed-area ratio inside ROI. Returns `GateResult(changed, ratio, bbox)`.
   If ratio > `global_change_max` (0.6) treat as lighting/shake: re-baseline, not changed.
@@ -85,12 +85,12 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
   source), a judge worker pool (size 2), the scheduler, health (reconnect with exponential
   backoff 1s->60s, one "source offline" alert, one "back online"). Start lazily on first rule or
   on load if rules exist; stop on `ctx.on_unload`. Thread-safe, never blocks the agent loop.
-- `alerts.py` — on event: `ctx.inject_message(...)` into the rule's stored origin/session with a
+- `alerts/delivery.py` — on event: `ctx.inject_message(...)` into the rule's stored origin/session with a
   compact text containing caption, confidence, event id, `MEDIA:<snapshot>` and, for
   `action=agent`, the `action_prompt`. Fallback `ctx.post_message`. Rate-limited.
   Never waits for a human (rule 12).
 - `sentinel/agent/tools/` — agent tools (section 3), one module per tool. `sentinel/agent/commands/` — `/sentinel` slash command.
-- `dashboard/plugin_api.py` — FastAPI router for the Desktop pane.
+- `dashboard/plugin_api.py` — thin entry point exporting the router built in `sentinel/dashboard_api/` for the Desktop pane.
 - `desktop/plugin.js` — pane: source tiles (latest frame, 1 fps polling), rule list with
   pause/resume, event timeline with thumbnails and correct/false-alarm buttons. SDK only.
 

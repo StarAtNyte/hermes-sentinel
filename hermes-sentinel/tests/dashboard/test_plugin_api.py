@@ -8,6 +8,8 @@ import yaml
 from harness.dashboard_rig import (
     BASE,
     CAM,
+    load_api,
+    make_client,
 )
 from harness.plugin_loader import PLUGIN_DIR
 
@@ -58,3 +60,40 @@ def test_writes_return_503_when_plugin_not_loaded(idle_client):
     ):
         assert resp.status_code in (404, 503), resp.text
         assert resp.json()["ok"] is False and resp.json()["error"]
+
+
+def test_loaded_plugin_serves_the_real_router(api):
+    from harness.plugin_loader import MODULE_NAME
+
+    assert api.find_package() == MODULE_NAME
+    paths = {r.path for r in api.router.routes}
+    assert {"/status", "/rules", "/watch"} <= paths
+    assert "/{path:path}" not in paths
+
+
+def test_plugin_api_does_not_register_modules(api):
+    import sys
+
+    before = set(sys.modules)
+    load_api("hermes_dashboard_plugin_hermes_sentinel_probe")
+    added = set(sys.modules) - before
+    sys.modules.pop("hermes_dashboard_plugin_hermes_sentinel_probe", None)
+    assert not [name for name in added if "dashboard_plugin" not in name]
+
+
+def test_without_the_plugin_every_route_answers_503(monkeypatch):
+    import sys
+
+    for name in [k for k in sys.modules if k.startswith("hermes_plugins.hermes_sentinel")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr("harness.dashboard_rig.plugin_package", lambda: None)
+    name = "hermes_dashboard_plugin_hermes_sentinel_bare"
+    try:
+        mod = load_api(name)
+    finally:
+        sys.modules.pop(name, None)
+    assert mod.find_package() is None
+    client = make_client(mod)
+    for resp in (client.get(f"{BASE}/status"), client.post(f"{BASE}/watch", json={"text": "x"})):
+        assert resp.status_code == 503
+        assert resp.json() == {"ok": False, "error": mod.NOT_LOADED}
