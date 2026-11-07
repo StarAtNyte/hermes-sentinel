@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from ...rules import RuleSpec
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["confirm_spacing", "schedule_active"]
 
@@ -15,7 +18,8 @@ def schedule_active(spec: RuleSpec, wall_now: float) -> bool:
         return True
     try:
         return spec.schedule.is_active(datetime.fromtimestamp(wall_now))
-    except Exception:  # noqa: BLE001 - a broken schedule must not silence the rule
+    except (ValueError, OverflowError, OSError, TypeError) as exc:
+        logger.warning("sentinel: rule %s has an unreadable schedule: %s", spec.id, exc)
         return True
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -10,6 +11,8 @@ from typing import Any
 
 from ...alerts import route_from_kwargs
 from ...sources import list_sources
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["SetupEnv"]
 
@@ -54,7 +57,10 @@ class SetupEnv:
                 route = route_from_kwargs(kwargs)
                 if not route.get("session_key"):
                     route = sentinel.routes.lookup(str(kwargs.get("session_id") or "")) or route
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - broad: route lookup reads host-supplied kwargs
+                logger.debug(
+                    "sentinel: setup could not read the caller route: %s", type(exc).__name__
+                )
                 route = {}
         engine = sentinel.engine_if_built
         if engine is not None and getattr(engine, "running", False):

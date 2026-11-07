@@ -362,3 +362,26 @@ def test_open_timeout_thread_inherits_context():
     finally:
         ctxvar.reset(token)
     assert out == "scoped"
+
+
+def test_standby_thread_survives_and_logs_a_failed_takeover(fake_ctx, tmp_path, caplog):
+    lock = tmp_path / "engine.lock"
+    owner = engine_mod.ProcessLock(lock)
+    assert owner.acquire()
+    h = H(fake_ctx, lock_path=lock, threaded=True)
+    try:
+        assert h.engine.start() is False
+
+        def explode(allow_standby=True):
+            raise RuntimeError("takeover blew up")
+
+        h.engine.lifecycle.start = explode
+        with caplog.at_level("ERROR"):
+            deadline = time.monotonic() + 5
+            while not caplog.records and time.monotonic() < deadline:
+                time.sleep(0.01)
+        assert any("standby takeover attempt failed" in r.getMessage() for r in caplog.records)
+        assert any(t.name == "sentinel-standby" for t in threading.enumerate())
+    finally:
+        owner.release()
+        h.close()

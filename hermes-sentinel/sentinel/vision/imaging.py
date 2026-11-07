@@ -34,7 +34,8 @@ def _np() -> Any:
 def _cv2() -> Any | None:
     try:
         import cv2
-    except Exception:  # noqa: BLE001 - ImportError or a broken binary wheel
+    except (ImportError, OSError, AttributeError) as exc:  # a broken binary wheel fails oddly
+        logger.debug("sentinel: OpenCV unavailable: %s", exc)
         return None
     return cv2
 
@@ -127,7 +128,7 @@ def encode_jpeg(
     """
     try:
         data, mime = encode_image(frame, max_side=max_side, quality=quality)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - broad: cv2.error has no stable public base class
         logger.warning("sentinel: could not encode frame: %s", exc)
         return None
     return data if mime == "image/jpeg" else None

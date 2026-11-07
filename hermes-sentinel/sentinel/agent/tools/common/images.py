@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from ....vision import encode_jpeg
 from .results import ToolError
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["EXAMPLE_JPEG_QUALITY", "EXAMPLE_MAX_SIDE", "decode_to_jpeg", "small_jpeg"]
 
@@ -20,7 +24,8 @@ def decode_to_jpeg(data: bytes) -> bytes:
     try:
         import cv2
         import numpy as np
-    except Exception:  # noqa: BLE001
+    except ImportError as exc:
+        logger.debug("sentinel: OpenCV unavailable for example decoding: %s", exc)
         if data.startswith(b"\xff\xd8\xff"):
             return data
         raise ToolError("only JPEG images can be used without OpenCV installed") from None

@@ -70,9 +70,10 @@ async def run_blocking(fn: Any, *args: Any) -> Any:
         return await asyncio.to_thread(fn, *args)
     except ApiError as exc:
         return fail(exc.status, exc.message)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - broad: route boundary maps every failure to an HTTP error
         name = type(exc).__name__
         if name == "StoreError":
+            logger.warning("sentinel dashboard: %s hit a storage error: %s", fn.__name__, exc)
             return fail(503, "Sentinel storage is unavailable")
         logger.exception("sentinel dashboard: %s failed", fn.__name__)
         return fail(500, f"unexpected error ({name})")

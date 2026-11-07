@@ -109,7 +109,8 @@ class RuleBook:
     def _move_roi(rt: RuleRuntime, spec: RuleSpec) -> None:
         try:
             rt.gate.set_roi(spec.roi)
-        except Exception:  # noqa: BLE001 - a gate that cannot move its ROI is rebuilt
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.debug("sentinel: rule %s gate rebuilt, ROI not movable: %s", spec.id, exc)
             rt.gate = None
 
 

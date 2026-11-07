@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -34,6 +35,8 @@ from ..common import (
     schema,
     str_arg,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["MAX_RULES", "SPEC"]
 
@@ -167,7 +170,8 @@ def _setup_hint(context: ToolContext) -> str:
     try:
         env = SetupEnv.from_sentinel(context.sentinel, probe_sources=False)
         failing = fail_titles(run_checks(env))
-    except Exception:  # noqa: BLE001 - a hint must never break a watch
+    except Exception as exc:  # noqa: BLE001 - broad: setup checks touch devices and host code
+        logger.debug("sentinel: setup hint skipped: %s", type(exc).__name__)
         return ""
     if not failing:
         return ""

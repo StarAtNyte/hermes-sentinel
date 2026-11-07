@@ -8,11 +8,14 @@ not loaded in this process every read degrades to an empty answer and every writ
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
 import threading
 from typing import Any
 
 from .http import ApiError
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "NOT_LOADED",
@@ -52,7 +55,8 @@ def active() -> tuple[str, Any] | None:
         try:
             runtime = importlib.import_module(f"{name}.sentinel.runtime")
             live = runtime.active_sentinel()
-        except Exception:  # noqa: BLE001 - partially imported / foreign module
+        except Exception as exc:  # noqa: BLE001 - broad: a partially imported or foreign module
+            logger.debug("sentinel: package %s has no live runtime: %s", name, type(exc).__name__)
             continue
         if live is not None:
             return name, live
@@ -91,7 +95,8 @@ def version() -> str:
     """The plugin version, ``"unknown"`` when it cannot be read."""
     try:
         return str(module("version").__version__)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - broad: module() may raise ApiError or ImportError
+        logger.debug("sentinel: plugin version unreadable: %s", type(exc).__name__)
         return "unknown"
 
 

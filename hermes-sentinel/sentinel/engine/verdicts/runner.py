@@ -42,7 +42,13 @@ class JudgeRunner:
     def loop(self) -> None:
         """Worker thread body: judge groups until the engine stops."""
         while not self._state.stop.is_set():
-            group = self._queue.wait_for_group()
+            try:
+                group = self._queue.wait_for_group()
+            except Exception as exc:  # noqa: BLE001 - broad: a judge thread must never die silently
+                logger.exception("sentinel: judge queue wait failed")
+                self._state.record_error(exc)
+                self._state.stop.wait(1.0)
+                continue
             if not group:
                 return
             self._run_group_safely(group)

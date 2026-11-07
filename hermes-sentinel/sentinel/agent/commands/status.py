@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from typing import Any
 
 from ...alerts import GATEWAY_INJECTION_YAML, is_chat_origin, route_hint
 from ...runtime import Sentinel
+from ...storage import StoreError
 from .common import visible_rules
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["list_rules_text", "status_text"]
 
@@ -84,7 +89,8 @@ def _delivery_lines(sentinel: Sentinel) -> list[str]:
 def _budget_line(sentinel: Sentinel) -> str:
     try:
         return "  " + sentinel.budget.status().describe()
-    except Exception as exc:  # noqa: BLE001
+    except (StoreError, OSError, sqlite3.Error) as exc:
+        logger.debug("sentinel: budget status unavailable: %s", exc)
         return f"  budget unavailable: {exc}"
 
 
@@ -93,7 +99,8 @@ def status_text(sentinel: Sentinel, version: str, caller: dict[str, Any] | None 
     head = f"hermes-sentinel {version}".strip()
     try:
         rules = visible_rules(sentinel, caller or {})
-    except Exception as exc:  # noqa: BLE001
+    except (StoreError, OSError, sqlite3.Error) as exc:
+        logger.warning("sentinel: status could not read rules: %s", exc)
         return f"{head}: storage unavailable ({exc})."
     scoped = is_chat_origin(caller)
     engine = sentinel.engine_if_built

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from collections.abc import Callable
 from typing import Any
 
 from ...rules import RuleSpec
 from ...sources import SourceError
+from ...storage import StoreError
 from ..capture import FrameGrabber
 from ..infra import ExampleCache, short_error
 from ..state import EngineState
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["RuleTester"]
 
@@ -64,5 +69,6 @@ class RuleTester:
             return spec
         try:
             return self._state.store.get_rule(rule_id)
-        except Exception:  # noqa: BLE001 - an unreadable store means "no such rule"
+        except (StoreError, OSError, sqlite3.Error) as exc:
+            logger.debug("sentinel: could not read rule %s: %s", rule_id, exc)
             return None

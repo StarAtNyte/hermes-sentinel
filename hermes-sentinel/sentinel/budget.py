@@ -14,12 +14,18 @@ is allowed again), so the agent is told once rather than on every refused frame.
 
 from __future__ import annotations
 
+import logging
 import math
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
+
+from .storage import StoreError
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_PER_DAY",
@@ -228,7 +234,8 @@ class Budget:
             return fallback
         try:
             buckets = buckets_fn(now)
-        except Exception:  # noqa: BLE001 - a store hiccup must not break status
+        except (StoreError, OSError, sqlite3.Error) as exc:
+            logger.debug("sentinel: usage buckets unavailable: %s", exc)
             return fallback
         used = day_used
         for start, calls in buckets:

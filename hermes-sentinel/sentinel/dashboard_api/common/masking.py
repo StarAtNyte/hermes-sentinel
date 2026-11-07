@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from typing import Any
 
 from . import access
 from .http import MAX_SOURCE
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["mask", "source_key", "source_label_kind"]
 
@@ -68,7 +71,8 @@ def source_key(live: Any, spec: str) -> str:
             if engine is not None
             else access.module("engine").default_source_key(spec, live.config.stream_urls)
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - broad: engine, sources and ApiError all possible
+        logger.debug("sentinel: source key fell back to text: %s", type(exc).__name__)
         key = str(spec).strip()
     return mask(key)
 
@@ -79,5 +83,6 @@ def source_label_kind(spec: str, named: Any) -> tuple[str, str]:
     try:
         parsed = sources.SourceSpec.parse(spec, named_streams=named)
         return mask(parsed.display_name), str(parsed.kind)
-    except Exception:  # noqa: BLE001
+    except (sources.SourceError, ValueError, TypeError) as exc:
+        logger.debug("sentinel: source label unparsable: %s", type(exc).__name__)
         return mask(spec), "unknown"

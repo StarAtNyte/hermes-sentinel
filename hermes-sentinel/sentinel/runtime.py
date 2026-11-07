@@ -12,6 +12,7 @@ loaded instance through :func:`active_sentinel` of this module.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
@@ -159,7 +160,8 @@ class Sentinel:
             if self._routes is None:
                 try:
                     path = self.store.data_dir / ROUTES_FILENAME
-                except Exception:  # noqa: BLE001 - no store: keep routes in memory only
+                except (StoreError, OSError, sqlite3.Error) as exc:
+                    logger.warning("sentinel: routes kept in memory only (no store): %s", exc)
                     path = None
                 self._routes = RouteBook(path)
             return self._routes
@@ -177,8 +179,8 @@ class Sentinel:
             self.housekeeping()
             if self.store.list_rules(enabled_only=True):
                 self.engine.start()
-        except Exception as exc:  # noqa: BLE001 - a broken store must not break plugin load
-            logger.warning("sentinel: not starting the watcher at load: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - broad: engine start touches camera/LLM/host code
+            logger.warning("sentinel: not starting the watcher at load: %s", exc, exc_info=True)
 
     def boot_delayed(self, delay: float | None = None) -> None:
         """Run :meth:`boot` after ``delay`` seconds on a cancellable daemon timer.
@@ -213,15 +215,15 @@ class Sentinel:
             sources = list(self.config.stream_urls.values())
             sources += [rule.source for rule in self.store.list_rules(enabled_only=True)]
             prime_secrets(referenced_secrets(sources))
-        except Exception as exc:  # noqa: BLE001 - priming is best effort
-            logger.debug("sentinel: priming secrets failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - broad: the host secret scope raises its own types
+            logger.debug("sentinel: priming secrets failed: %s", type(exc).__name__, exc_info=True)
 
     def housekeeping(self) -> None:
         """Apply retention (``store.prune_if_due``) even when no rule is enabled. Never raises."""
         try:
             self.store.prune_if_due()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("sentinel: housekeeping prune failed: %s", exc)
+        except (StoreError, OSError, sqlite3.Error) as exc:
+            logger.warning("sentinel: housekeeping prune failed: %s", exc)
 
     def shutdown(self) -> None:
         """Stop threads and close the store (``ctx.on_unload``). Idempotent, never raises."""
@@ -239,10 +241,10 @@ class Sentinel:
         if engine is not None:
             try:
                 engine.stop()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("sentinel: engine stop failed: %s", exc)
+            except Exception as exc:  # noqa: BLE001 - broad: stop joins threads and closes sources
+                logger.warning("sentinel: engine stop failed: %s", exc, exc_info=True)
         if store is not None:
             try:
                 store.close()
-            except Exception as exc:  # noqa: BLE001
+            except (StoreError, OSError, sqlite3.Error) as exc:
                 logger.warning("sentinel: store close failed: %s", exc)

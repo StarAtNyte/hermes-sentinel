@@ -50,7 +50,7 @@ def decode_image(data: bytes, *, origin: str) -> Frame:
     buf = np.frombuffer(data, dtype=np.uint8)
     try:
         img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
-    except Exception as exc:  # cv2.error is not a stable public type
+    except Exception as exc:  # noqa: BLE001 - broad: cv2.error has no stable public base class, re-raised as SourceError
         raise SourceError(f"{origin}: cannot decode image ({exc})") from exc
     if img is None:
         raise SourceError(f"{origin}: data is not a decodable image")

@@ -38,7 +38,7 @@ class BackgroundPruner:
     def _run(self, store: Any) -> None:
         try:
             store.prune_if_due()
-        except Exception as exc:  # noqa: BLE001 - retention is best effort
-            logger.debug("sentinel: background prune failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - broad: the prune thread must never die silently
+            logger.warning("sentinel: background prune failed: %s", exc, exc_info=True)
         finally:
             self.busy = False

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
 
 try:  # OpenCV is optional; numpy covers every operation.
     import cv2 as _cv2
-except Exception:  # pragma: no cover - depends on the environment
+except (ImportError, OSError, AttributeError) as exc:  # pragma: no cover - environment
+    logging.getLogger(__name__).debug("sentinel: OpenCV unavailable for the gate: %s", exc)
     _cv2 = None
 
 __all__ = ["ImageOps", "cv2_available"]

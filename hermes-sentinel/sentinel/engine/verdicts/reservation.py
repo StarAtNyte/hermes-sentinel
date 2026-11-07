@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from ...rules import RuleSpec
+from ...storage import StoreError
 from ..state import EngineState
 
 logger = logging.getLogger(__name__)
@@ -36,5 +38,6 @@ class BudgetReserver:
     def _exhausted_notice(self) -> str | None:
         try:
             return self._state.budget.take_exhausted_notice()
-        except Exception:  # noqa: BLE001 - the notice is optional
+        except (StoreError, OSError, sqlite3.Error) as exc:
+            logger.debug("sentinel: budget notice unavailable: %s", exc)
             return None

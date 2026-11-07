@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ...sources import redact_url
 from .env import SetupEnv
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["mask", "named_streams"]
 
@@ -17,7 +20,8 @@ def mask(text: Any) -> str:
         if "://" in word:
             try:
                 word = redact_url(word)
-            except Exception:  # noqa: BLE001
+            except (ValueError, TypeError) as exc:
+                logger.debug("sentinel: could not redact a URL: %s", type(exc).__name__)
                 word = "<url>"
         out.append(word)
     return " ".join(out)[:600]

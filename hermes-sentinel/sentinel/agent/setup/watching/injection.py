@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ....alerts import GATEWAY_INJECTION_YAML
 from ..env import SetupEnv
 from ..model import FAIL, OK, WARN, Check
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["check_injection"]
 
@@ -34,7 +37,8 @@ def check_injection(env: SetupEnv) -> Check:
     sent = 0
     try:
         sent = int((env.alerter.stats() if env.alerter is not None else {}).get("sent", 0))
-    except Exception:  # noqa: BLE001
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("sentinel: alert stats unreadable: %s", exc)
         sent = 0
     if sent > 0:
         return Check("injection", title, OK, f"{sent} alert(s) delivered since start.")

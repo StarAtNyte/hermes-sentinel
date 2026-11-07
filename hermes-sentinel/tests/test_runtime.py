@@ -62,3 +62,15 @@ def test_boot_starts_only_with_enabled_rules(fake_ctx):
     rig.sources[CAM] = FakeSource(build_scene("static_scene", n_frames=5), rig.clock)
     rig.sentinel.boot()
     assert rig.sentinel.engine.running
+
+
+def test_routes_without_a_store_are_logged_and_kept_in_memory(fake_ctx, caplog):
+    def broken(cfg):
+        raise runtime.StoreError("disk is read-only")
+
+    s = runtime.Sentinel(fake_ctx, store_factory=broken, threaded=False)
+    with caplog.at_level("WARNING"):
+        routes = s.routes
+    assert routes is not None
+    assert any("routes kept in memory only" in r.getMessage() for r in caplog.records)
+    s.shutdown()

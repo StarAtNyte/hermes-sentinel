@@ -114,6 +114,13 @@ Messaging callers see and modify only rules whose origin matches their chat (ses
 | Bad config value | Falls back to the default; listed by `/sentinel status`. |
 | Plugin unload | Stop flag, threads joined with a timeout, store closed. |
 
+### Error-handling rules
+
+- Known failure modes are caught by type: `StoreError`, `OSError` and `sqlite3.Error` for storage, `SourceError` and `ValueError` for source specs, `ImportError` for optional dependencies.
+- A broad `except Exception` is kept only where the callee is outside our control (the host LLM client and messaging callables, third-party capture libraries, user rule text, the engine and plugin-boot top levels). Each carries a one-line "broad: why" comment and always logs through the module logger (secrets and credential URLs never go into messages) or surfaces the failure (`Verdict.error`, a notice, a tool or HTTP error).
+- Nothing is swallowed silently. Best-effort fallbacks log at debug level; anything that changes behaviour for the user logs at warning level.
+- Every background thread has a guarded top level: capture (`_guarded_step`), judge workers (`JudgeRunner.loop` and `_run_group_safely`), scheduler (`Scheduler.loop`), standby (`_standby_loop`) and the background pruner log with a traceback, record the error in engine state where one exists, and keep running.
+
 Retention and the storage cap are enforced at start-up and at least hourly by a background prune, which is also kicked off when tools or commands first touch the store.
 
 ## Testing

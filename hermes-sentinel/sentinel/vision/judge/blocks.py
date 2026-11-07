@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import Any
 
 from .parsing import clean
 from .schema import MAX_EXAMPLE_BYTES, MAX_EXAMPLES_PER_KIND
 from .types import Example
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["example_blocks", "image_block", "text_block"]
 
@@ -16,7 +19,8 @@ def image_block(data: bytes, mime: str, name: str) -> Any:
     """A ``PluginLlmImageInput`` when the host type is importable, else the same-shape dict."""
     try:
         from agent.plugin_llm import PluginLlmImageInput
-    except Exception:  # noqa: BLE001 - outside Hermes
+    except ImportError:
+        logger.debug("sentinel: host PluginLlmImageInput unavailable; using a plain image block")
         return {"type": "image", "data": data, "mime_type": mime, "file_name": name}
     return PluginLlmImageInput(data=data, mime_type=mime, file_name=name)
 

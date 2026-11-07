@@ -122,8 +122,12 @@ class Lifecycle:
         state = self._state
         while not state.stop.wait(state.settings.sync_interval):
             # Take over in place: never spawns another standby thread.
-            if self.start(allow_standby=False):
-                return
+            try:
+                if self.start(allow_standby=False):
+                    return
+            except Exception as exc:  # noqa: BLE001 - broad: the standby thread must never die silently
+                logger.exception("sentinel: standby takeover attempt failed")
+                state.record_error(exc)
 
     def stop(self, timeout: float | None = None) -> None:
         """Stop and join every thread, close sources, release the engine lock. Idempotent."""

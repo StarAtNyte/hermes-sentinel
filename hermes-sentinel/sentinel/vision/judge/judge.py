@@ -119,7 +119,7 @@ class Judge:
         template = MOTION_INSTRUCTIONS if len(sequence) >= 2 else JUDGE_INSTRUCTIONS
         try:
             blocks = self.build_input(frame, roi=roi, examples=examples, sequence=sequence)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: encoder errors surface as Verdict.error
             return Verdict(None, error=f"bad frame: {error_text(exc)}")
         return self._ask(template.format(question=clean(question, 500)), blocks, rule_id, start)
 
@@ -146,7 +146,8 @@ class Judge:
             return Verdict(None, error=error_text(exc), elapsed=elapsed())
         try:
             return parse_verdict(result, elapsed=elapsed())
-        except Exception as exc:  # noqa: BLE001 - defensive: parsing must never raise
+        except Exception as exc:  # noqa: BLE001 - broad: reply shape is untrusted, surfaced as Verdict.error
+            logger.info("sentinel: unparseable judge reply: %s", error_text(exc))
             return Verdict(None, error=f"unparseable reply: {error_text(exc)}", elapsed=elapsed())
 
     def judge_batch(self, frame: Any, questions: Sequence[BatchQuestion]) -> BatchOutcome:
@@ -160,7 +161,7 @@ class Judge:
         ids = [q.rule_id for q in questions]
         try:
             data, mime = encode_image(frame, max_side=self.max_side, quality=self.jpeg_quality)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: encoder errors surface as BatchOutcome.error
             return BatchOutcome(
                 missing=tuple(ids), error=f"bad frame: {error_text(exc)}", call_failed=True
             )
@@ -191,7 +192,7 @@ class Judge:
 
         try:
             data, mime = encode_image(crop, max_side=VERIFY_MAX_SIDE, quality=VERIFY_JPEG_QUALITY)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: encoder errors surface as Verdict.error
             return Verdict(None, error=f"bad frame: {error_text(exc)}")
         blocks = [
             text_block("Close-up, higher resolution, of the part of the scene that changed:"),
@@ -209,12 +210,13 @@ class Judge:
                 purpose=f"sentinel:verify:{rule_id}",
                 task=self.task,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: third-party LLM client, surfaced as Verdict.error
             logger.info("sentinel: second opinion failed for %s: %s", rule_id, error_text(exc))
             return Verdict(None, error=error_text(exc), elapsed=elapsed())
         try:
             return parse_verdict(result, elapsed=elapsed())
-        except Exception as exc:  # noqa: BLE001 - defensive: parsing must never raise
+        except Exception as exc:  # noqa: BLE001 - broad: reply shape is untrusted, surfaced as Verdict.error
+            logger.info("sentinel: unparseable judge reply: %s", error_text(exc))
             return Verdict(None, error=f"unparseable reply: {error_text(exc)}", elapsed=elapsed())
 
     def describe(
@@ -229,7 +231,7 @@ class Judge:
         )
         try:
             data, mime = encode_image(frame, max_side=self.max_side, quality=self.jpeg_quality)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: encoder errors surface as Description.error
             return Description(error=f"bad frame: {error_text(exc)}")
         try:
             result = self._client().complete_structured(
@@ -243,7 +245,8 @@ class Judge:
                 purpose=purpose,
                 task=self.task,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: third-party LLM client, surfaced as Description.error
+            logger.info("sentinel: describe call failed: %s", error_text(exc))
             return Description(error=error_text(exc), elapsed=max(0.0, self._clock() - start))
         return self._describe_reply(result, max(0.0, self._clock() - start))
 

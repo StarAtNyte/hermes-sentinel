@@ -65,7 +65,7 @@ class ScreenSource(BaseSource):
         if sct is not None:
             try:
                 sct.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 - broad: third-party mss close, logged below
                 log.debug("mss close failed", exc_info=True)
 
     def _compute_box(self, sct: Any) -> dict[str, int]:

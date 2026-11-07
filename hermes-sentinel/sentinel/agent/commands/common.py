@@ -50,7 +50,8 @@ def caller_origin(sentinel: Sentinel, kwargs: dict[str, Any]) -> dict[str, Any]:
     """Who is typing: the command keywords, the session surface and any known route."""
     try:
         return capture_origin(kwargs, sentinel.ctx, routes=sentinel.routes)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - broad: reads host-supplied context and kwargs
+        logger.debug("sentinel: could not capture the caller origin: %s", type(exc).__name__)
         return {}
 
 

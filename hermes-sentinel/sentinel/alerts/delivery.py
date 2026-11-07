@@ -97,7 +97,7 @@ class Alerter:
         """``ctx.post_message`` fallback: (delivery if it worked, failure detail)."""
         try:
             handle = self._ctx.post_message(text)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: host messaging callable, reported as the failure detail
             logger.warning("sentinel: post_message failed: %s", exc)
             return None, str(exc)[:200]
         if handle is not None and getattr(handle, "ok", True):
@@ -212,7 +212,7 @@ class Alerter:
             text = format_event_message(
                 rule, event, source_name=source_name, include_media=media, suppressed=suppressed
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: user rule text is formatted; fall back to a plain alert
             logger.warning("sentinel: could not format alert: %s", exc)
             text = f"[Sentinel alert] rule {rule_id} fired (event #{getattr(event, 'id', '?')})."
         result = self._deliver(text, getattr(rule, "origin", None), post_fallback=post_fallback)

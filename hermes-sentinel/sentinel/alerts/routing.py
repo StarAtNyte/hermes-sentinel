@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .route_book import RouteBook
+
+logger = logging.getLogger(__name__)
 
 #: Session surfaces that are not a messaging chat (an ``origin`` route makes no sense there).
 LOCAL_SURFACES = frozenset({"", "cli", "tui", "desktop", "local", "acp", "api_server", "gateway"})
@@ -66,7 +69,8 @@ def capture_origin(
     if ctx is not None:
         try:
             surface = clean_value(ctx.session_surface())
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - broad: a host-supplied callable
+            logger.debug("sentinel: session surface unavailable: %s", type(exc).__name__)
             surface = None
         if surface:
             out["surface"] = surface
