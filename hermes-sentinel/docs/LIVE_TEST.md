@@ -180,5 +180,5 @@ Date: 2026-11-07. Rule: "a person raises their hand above shoulder level" on `ca
 
 - Hermes Desktop: the Sentinel pane and live rendering of the injected alert.
 - Telegram (and other messaging platforms): alert with a photo.
-- A real webcam.
+- Run 7 (real webcam, fixed code, passed): after `/sentinel resume` rebound the rule to the live session, the hand raise fired at 0.98 confidence at 21:39:13 (about 35 s after resume: camera warm-up plus 2-of-3 confirmation). Hermes logged `Plugin message injection admitted`, ran an agent turn on the `[Sentinel alert]` message and analysed the attached snapshot. An earlier run (7a) dropped its alert because a gateway left over from a previous CLI session did not know the new session; restarting the session fixed it. If alerts are refused, restart Hermes and run `/sentinel resume <id>` in the new session.
 - Tuning on real-world footage (lighting changes, people, pets, longer sessions).
