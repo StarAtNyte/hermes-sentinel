@@ -6,7 +6,13 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
-from ...alerts import adopt_session_rules, capture_origin, describe_held, visible_to
+from ...alerts import (
+    adopt_session_rules,
+    capture_origin,
+    delivery_label,
+    describe_held,
+    visible_to,
+)
 from ...runtime import Sentinel
 
 logger = logging.getLogger(__name__)
@@ -16,6 +22,7 @@ __all__ = [
     "USAGE",
     "adopt_route",
     "caller_origin",
+    "delivery_lines",
     "held_alert_lines",
     "remember_route",
     "take_held_alert",
@@ -72,6 +79,17 @@ def held_alert_lines(sentinel: Sentinel, rules: Iterable[Any]) -> list[str]:
         held = book.get(spec.id)
         if held is not None:
             lines.append(describe_held(spec.id, held))
+    return lines
+
+
+def delivery_lines(sentinel: Sentinel, rules: Iterable[Any]) -> list[str]:
+    """One line per rule in ``rules`` whose newest event has a recorded alert outcome."""
+    lines = []
+    for spec in rules:
+        last = sentinel.store.last_event(spec.id)
+        text = last and delivery_label(last.delivery, last.delivery_detail, last.delivery_ts)
+        if text:
+            lines.append(f"rule {spec.id}: last alert (event #{last.id}) {text}")
     return lines
 
 

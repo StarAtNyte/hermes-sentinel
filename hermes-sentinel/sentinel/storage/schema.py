@@ -71,8 +71,23 @@ def migration_1(conn: sqlite3.Connection) -> None:
     run_statements(conn, MIGRATION_1_SQL)
 
 
+MIGRATION_2_SQL = """
+        ALTER TABLE events ADD COLUMN delivery TEXT;
+        ALTER TABLE events ADD COLUMN delivery_detail TEXT NOT NULL DEFAULT '';
+        ALTER TABLE events ADD COLUMN delivery_ts TEXT
+        """
+
+
+def migration_2(conn: sqlite3.Connection) -> None:
+    """Events remember how their alert was delivered: outcome, reason and time."""
+    run_statements(conn, MIGRATION_2_SQL)
+
+
 #: Ordered (version, migration). Append new versions; never edit a shipped one.
-MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = ((1, migration_1),)
+MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
+    (1, migration_1),
+    (2, migration_2),
+)
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 
 

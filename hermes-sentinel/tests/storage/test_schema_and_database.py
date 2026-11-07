@@ -14,7 +14,7 @@ StoreError = store_mod.StoreError
 
 
 def test_opens_with_schema_and_fts(store, plugin_data_dir):
-    assert store.schema_version() == store_mod.SCHEMA_VERSION == 1
+    assert store.schema_version() == store_mod.SCHEMA_VERSION == 2
     assert store.fts_enabled
     assert store.data_dir == plugin_data_dir.resolve()
     assert (plugin_data_dir / "sentinel.db").exists()
@@ -25,11 +25,27 @@ def test_reopen_is_idempotent(plugin_data_dir, clock):
     s1.upsert_rule(rule())
     s1.close()
     s2 = Store(clock=clock)
-    assert s2.schema_version() == 1
+    assert s2.schema_version() == 2
     assert [r.id for r in s2.list_rules()] == ["rmug"]
     rows = s2._database.read("SELECT COUNT(*) FROM schema_migrations")
-    assert rows[0][0] == 1
+    assert rows[0][0] == 2
     s2.close()
+
+
+def test_version_one_database_gains_delivery_columns(plugin_data_dir, clock):
+    plugin_data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(plugin_data_dir / "sentinel.db")
+    conn.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT)")
+    conn.execute("INSERT INTO schema_migrations VALUES (1, 'x')")
+    store_mod.MIGRATIONS[0][1](conn)
+    conn.execute("INSERT INTO events(rule_id, ts) VALUES ('r', '2025-11-06T12:00:00.000Z')")
+    conn.commit()
+    conn.close()
+    upgraded = Store(clock=clock)
+    event = upgraded.get_event(1)
+    assert upgraded.schema_version() == 2
+    assert (event.delivery, event.delivery_detail, event.delivery_ts) == (None, "", None)
+    upgraded.close()
 
 
 def test_newer_schema_refused(plugin_data_dir, clock):

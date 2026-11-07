@@ -6,10 +6,10 @@ import logging
 import sqlite3
 from typing import Any
 
-from ...alerts import GATEWAY_INJECTION_YAML, is_chat_origin, route_hint
+from ...alerts import GATEWAY_INJECTION_YAML, delivery_label, is_chat_origin, route_hint
 from ...runtime import Sentinel
 from ...storage import StoreError
-from .common import held_alert_lines, visible_rules
+from .common import delivery_lines, held_alert_lines, visible_rules
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,7 @@ def status_text(sentinel: Sentinel, version: str, caller: dict[str, Any] | None 
         lines += _engine_lines(engine, scoped, {r.id for r in rules})
         lines += _pacing_lines(sentinel, engine, rules)
     lines += _delivery_lines(sentinel)
+    lines += ["  " + line for line in delivery_lines(sentinel, rules)]
     lines += ["  " + line for line in held_alert_lines(sentinel, rules)]
     lines.append(_budget_line(sentinel))
     lines += [f"  config: {problem}" for problem in sentinel.config.problems]
@@ -131,6 +132,8 @@ def list_rules_text(sentinel: Sentinel, caller: dict[str, Any] | None = None) ->
         state = "paused" if not spec.enabled else (status or {}).get("state", "not running")
         last = sentinel.store.last_event(spec.id)
         last_text = f", last event #{last.id} {last.caption[:60]}" if last else ""
+        shown = last and delivery_label(last.delivery, last.delivery_detail, last.delivery_ts)
+        last_text += f" ({shown})" if shown else ""
         lines.append(f"{spec.id} [{state}] {spec.source}: {spec.text or spec.question}{last_text}")
         hint = route_hint(spec.origin, caller or {})
         if hint:

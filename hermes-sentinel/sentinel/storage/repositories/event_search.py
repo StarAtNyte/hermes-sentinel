@@ -10,7 +10,7 @@ from ..records import as_iso
 
 EVENT_COLS = (
     "e.id, e.rule_id, e.ts, e.caption, e.reason, e.confidence, e.source, "
-    "e.snapshot_path, e.feedback"
+    "e.snapshot_path, e.feedback, e.delivery, e.delivery_detail, e.delivery_ts"
 )
 TERM_RE = re.compile(r"[\w]+", re.UNICODE)
 STOPWORDS = frozenset(

@@ -188,6 +188,10 @@ class Store:
         """Mark an event ``correct`` / ``false_alarm`` (or clear with ``None``)."""
         return self._events.set_feedback(event_id, feedback)
 
+    def set_delivery(self, event_id: int, outcome: str, detail: str = "") -> EventRecord | None:
+        """Record how an event's alert was delivered, with the time."""
+        return self._events.set_delivery(event_id, outcome, detail)
+
     def count_events(self, *, rule_id: str | None = None, since: Any = None) -> int:
         """Number of events, optionally for one rule and/or since a time."""
         return self._events.count_events(rule_id=rule_id, since=since)

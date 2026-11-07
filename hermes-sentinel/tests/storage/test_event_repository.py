@@ -124,3 +124,19 @@ def test_last_event_and_count(store):
     assert store.count_events() == 4
     assert store.count_events(rule_id="r") == 3
     assert store.count_events(since=T0 + 5) == 3
+
+
+# --------------------------------------------------------------------------- delivery
+
+
+def test_set_delivery_records_outcome_and_time(store, clock):
+    event = store.add_event("r1", caption="x")
+    assert event.delivery is None and event.delivery_ts is None
+    updated = store.set_delivery(event.id, "held", "session not live")
+    assert (updated.delivery, updated.delivery_detail) == ("held", "session not live")
+    assert updated.delivery_ts.endswith("Z")
+    assert store.query_events(rule_id="r1")[0].delivery == "held"
+
+
+def test_set_delivery_unknown_event(store):
+    assert store.set_delivery(999, "delivered") is None

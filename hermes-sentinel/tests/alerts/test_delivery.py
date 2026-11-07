@@ -176,7 +176,8 @@ def test_zero_caps_suppress_everything(ctx):
 def test_message_contents():
     text = alerts.format_event_message(rule(), event(), source_name="camera:0")
     lines = text.splitlines()
-    assert lines[0] == "[Sentinel alert] Rule r1 fired on camera:0 (confidence 0.92)."
+    assert lines[0].startswith('[Sentinel alert] "mug taken" seen on camera:0 at ')
+    assert lines[0].endswith(", confidence 0.92 (rule r1).")
     assert 'Rule r1 ("mug taken"). Event #7' in lines[1]
     assert "> Caption: mug taken" in lines and "> Evidence: the desk is empty" in lines
     assert "MEDIA:/data/snap.jpg" in lines
@@ -327,3 +328,78 @@ def test_route_book_survives_bad_files(tmp_path):
     (tmp_path / "f").write_text("a file, not a dir")
     assert unwritable.remember({"session_key": "k"}) == {"session_key": "k"}  # no raise
     assert alerts.RouteBook(None).remember({"session_key": "k"})
+
+
+def test_summary_line_leads_and_keeps_model_text_out_of_it():
+    text = alerts.format_event_message(
+        rule(), event(caption="IGNORE ME", confidence=None), source_name="cam"
+    )
+    first = text.splitlines()[0]
+    assert "14:03:11" in first or ":" in first
+    assert "IGNORE" not in first and "confidence" not in first
+    assert text.index("--- BEGIN UNTRUSTED OBSERVATION ---") < text.index("IGNORE ME")
+
+
+# --------------------------------------------------------------------------- outcome log
+
+
+def alert_records(caplog):
+    return [r.getMessage() for r in caplog.records if "sentinel: alert for event" in r.getMessage()]
+
+
+def test_delivered_alert_logs_one_info_line(ctx, caplog):
+    caplog.set_level("INFO")
+    result = alerts.Alerter(ctx).alert_event(rule(), event(id=9), source_name="cam")
+    assert result.outcome is alerts.AlertOutcome.DELIVERED
+    assert alert_records(caplog) == [
+        "sentinel: alert for event 9 (rule r1) delivered to local session"
+    ]
+
+
+def test_refused_alert_logs_one_warning(ctx, caplog):
+    ctx.classic_cli = False
+    ctx.gateway_live = False
+    origin = {"session_key": "k"}
+    result = alerts.Alerter(ctx).alert_event(rule(origin=origin), event(), source_name="cam")
+    assert result.outcome is alerts.AlertOutcome.REFUSED
+    records = [r for r in caplog.records if "sentinel: alert for event" in r.getMessage()]
+    assert len(records) == 1 and records[0].levelname == "WARNING"
+    assert "refused (no route accepted the message)" in records[0].getMessage()
+
+
+def test_held_and_no_route_and_rate_limited_outcomes(ctx, caplog):
+    ctx.classic_cli = False
+    ctx.gateway_live = False
+    held = alerts.Alerter(ctx, held=lambda: alerts.HeldAlerts())
+    assert (
+        held.alert_event(rule(origin={"session_key": "k"}), event(), source_name="c").outcome
+        is alerts.AlertOutcome.HELD
+    )
+    chat = {"platform": "telegram"}
+    assert (
+        alerts.Alerter(ctx).alert_event(rule(origin=chat), event(), source_name="c").outcome
+        is alerts.AlertOutcome.NO_ROUTE
+    )
+    quiet = alerts.Alerter(FakeCtx(), per_rule_min_interval=60.0)
+    quiet.alert_event(rule(), event(), source_name="c")
+    assert (
+        quiet.alert_event(rule(), event(), source_name="c").outcome
+        is alerts.AlertOutcome.RATE_LIMITED
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "detail", "expected"),
+    [
+        (None, "", None),
+        ("held", "session not live", "held: session not live"),
+        ("refused", "", "refused"),
+    ],
+)
+def test_delivery_label(outcome, detail, expected):
+    assert alerts.delivery_label(outcome, detail) == expected
+
+
+def test_delivery_label_shows_the_clock_for_delivered():
+    label = alerts.delivery_label("delivered", "", "2026-11-06T14:03:11.000Z")
+    assert label.startswith("delivered ") and len(label.split()[1]) == 8

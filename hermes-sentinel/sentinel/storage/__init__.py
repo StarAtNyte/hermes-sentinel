@@ -9,7 +9,8 @@ Everything lives under the plugin's Hermes data directory:
 Schema (version tracked in ``schema_migrations``; migrations run forward on open)::
 
     rules     (id PK, spec_json, enabled, created_at, updated_at)
-    events    (id PK, rule_id, ts, caption, reason, confidence, source, snapshot_path, feedback)
+    events    (id PK, rule_id, ts, caption, reason, confidence, source, snapshot_path, feedback,
+                delivery, delivery_detail, delivery_ts)
     examples  (id PK, rule_id -> rules ON DELETE CASCADE, kind pos|neg, path, event_id, ...)
     usage     (bucket 'YYYY-MM-DDTHH' UTC, rule_id, vision_calls)  PK(bucket, rule_id)
     events_fts  FTS5(caption, reason), rowid = events.id   (only when FTS5 is available)

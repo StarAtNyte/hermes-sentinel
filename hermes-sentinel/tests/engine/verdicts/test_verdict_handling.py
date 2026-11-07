@@ -62,6 +62,14 @@ def test_budget_refusal_skips_and_notifies_once(fake_ctx):
         h.store.close()
 
 
+def test_fired_event_records_how_its_alert_was_delivered(h):
+    h.add(confirm_k=1, confirm_n=1)
+    h.judge.verdicts.append(Verdict(True, 0.95, caption="fire"))
+    h.step(gate_result="change")
+    event = h.store.last_event("r1")
+    assert event.delivery == "delivered" and event.delivery_ts is not None
+
+
 def test_store_failure_while_firing_still_alerts(h):
     h.add(confirm_k=1, confirm_n=1)
     h.judge.verdicts.append(Verdict(True, 0.95, caption="fire"))

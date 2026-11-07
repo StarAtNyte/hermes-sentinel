@@ -6,11 +6,12 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .books import HeldAlerts
 from .formatting import BLOCKED_TEXT, MAX_MESSAGE_LEN, format_event_message
+from .outcome import AlertOutcome, destination, log_line
 from .rate_limit import HourlyWindow
 from .routing import LOCAL_SURFACES, ROUTE_KEYS, clean_value, is_chat_origin
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 DELIVERED_VIAS = ("session_key", "origin", "session_id", "keyless", "post")
 #: Least time between two delivery self-tests (each one starts an agent turn).
 TEST_MIN_INTERVAL_SECONDS = 60.0
+NO_ROUTE_DETAIL = "this chat has no known route; send /sentinel here in it"
 _MAX_TRACKED_RULES = 4096
 _FORGET_RULES = 1024
 
@@ -29,12 +31,13 @@ class Delivery:
     """Outcome of one delivery attempt.
 
     ``via``: ``session_key`` / ``origin`` / ``keyless`` (injected), ``post`` (posted),
-    ``suppressed`` (rate limit) or ``failed``.
+    ``suppressed`` (rate limit) or ``failed``. ``outcome`` is set on alerts only.
     """
 
     ok: bool
     via: str
     detail: str = ""
+    outcome: AlertOutcome | None = None
 
 
 class Alerter:
@@ -129,10 +132,10 @@ class Alerter:
             if posted is not None:
                 return posted
         if not self._routes(origin):
-            detail = "this chat has no known route; send /sentinel here in it"
+            detail = NO_ROUTE_DETAIL
         else:
             self._set_blocked(True)
-        logger.warning("sentinel: alert could not be delivered: %s", detail)
+        logger.debug("sentinel: delivery failed: %s", detail)
         return Delivery(False, "failed", detail[:200])
 
     def _set_blocked(self, blocked: bool) -> None:
@@ -213,8 +216,10 @@ class Alerter:
         """
         rule_id = str(rule.id)
         suppressed = self._admit(rule_id, self._clock())
+        event_id = getattr(event, "id", 0)
         if suppressed is None:
-            return Delivery(False, "suppressed", "rate limited")
+            limited = Delivery(False, "suppressed", "rate limited", AlertOutcome.RATE_LIMITED)
+            return self._log_outcome(rule_id, event_id, limited)
         media = self.include_media if include_media is None else include_media
         try:
             text = format_event_message(
@@ -225,7 +230,26 @@ class Alerter:
             text = f"[Sentinel alert] rule {rule_id} fired (event #{getattr(event, 'id', '?')})."
         result = self._deliver(text, getattr(rule, "origin", None), post_fallback=post_fallback)
         self._count(result)
-        self._track_held(rule_id, getattr(event, "id", 0), result)
+        self._track_held(rule_id, event_id, result)
+        return self._log_outcome(rule_id, event_id, self._with_outcome(result))
+
+    def _with_outcome(self, result: Delivery) -> Delivery:
+        """``result`` stamped with how the alert ended."""
+        if result.ok:
+            return replace(result, outcome=AlertOutcome.DELIVERED)
+        if result.detail == NO_ROUTE_DETAIL:
+            return replace(result, outcome=AlertOutcome.NO_ROUTE)
+        held = self._held is not None
+        return replace(result, outcome=AlertOutcome.HELD if held else AlertOutcome.REFUSED)
+
+    @staticmethod
+    def _log_outcome(rule_id: str, event_id: Any, result: Delivery) -> Delivery:
+        """Log the one line for this alert and return ``result`` unchanged."""
+        outcome = result.outcome or AlertOutcome.REFUSED
+        reason = destination(result.via) if result.ok else result.detail
+        benign = result.ok or outcome is AlertOutcome.RATE_LIMITED
+        level = logging.INFO if benign else logging.WARNING
+        logger.log(level, log_line(rule_id, event_id, outcome, reason))
         return result
 
     def _track_held(self, rule_id: str, event_id: int, result: Delivery) -> None:
@@ -253,6 +277,8 @@ class Alerter:
         body += "\nLet the user know briefly; no action is needed unless they ask."
         result = self._deliver(body, origin, post_fallback=post_fallback)
         self._count(result)
+        if not result.ok:
+            logger.warning("sentinel: notice could not be delivered: %s", result.detail)
         return result
 
     def stats(self) -> dict[str, int]:

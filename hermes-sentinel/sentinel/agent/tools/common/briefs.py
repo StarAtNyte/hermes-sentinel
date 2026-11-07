@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from ....alerts import delivery_label
 from ....config import SentinelConfig
 from ....rules import RuleSpec
 from ....storage import EventRecord
@@ -32,6 +33,7 @@ def event_dict(event: EventRecord, rule: RuleSpec | None = None) -> dict[str, An
         "confidence": round(event.confidence, 2) if event.confidence is not None else None,
         "source": event.source,
         "feedback": event.feedback,
+        "delivery": delivery_label(event.delivery, event.delivery_detail, event.delivery_ts),
     }
     if rule is not None:
         out["rule"] = rule.text or rule.question

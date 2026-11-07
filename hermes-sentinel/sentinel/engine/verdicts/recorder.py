@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import Any
 
-from ...storage import EventRecord, to_iso
+from ...storage import EventRecord, StoreError, to_iso
 from ...vision import Verdict, encode_jpeg
 from ..models import Job, RuleRuntime
 from ..state import EngineState
@@ -33,9 +34,20 @@ class EventRecorder:
         event = self._store_event(rt, verdict, caption, snapshot, wall)
         rt.last_event_id = event.id
         state.fired += 1
-        state.alerter.alert_event(
+        result = state.alerter.alert_event(
             spec, event, source_name=rt.source_key, include_media=state.config.alert_snapshots
         )
+        self._record_delivery(event.id, result)
+
+    def _record_delivery(self, event_id: int, result: Any) -> None:
+        """Keep the delivery outcome with the stored event (none for an unstored event)."""
+        if event_id <= 0 or result.outcome is None:
+            return
+        reason = result.detail if not result.ok else ""
+        try:
+            self._state.store.set_delivery(event_id, result.outcome.value, reason)
+        except (StoreError, sqlite3.Error, OSError) as exc:
+            logger.warning("sentinel: could not record delivery of event %s: %s", event_id, exc)
 
     def _save_snapshot(self, frame: Any, wall: float, rule_id: str) -> Path | str | None:
         jpeg = encode_jpeg(frame)

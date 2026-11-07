@@ -76,3 +76,16 @@ def test_resume_without_a_held_alert_just_rebinds(rig):
     rule_id = watch(rig, session_id="old")
     out = handler(rig)(f"resume {rule_id}", session_id="new")
     assert out == f"Resumed rule {rule_id}; its alerts now come to this session."
+
+
+def test_status_list_and_tool_output_show_the_recorded_delivery(rig):
+    rule_id = watch(rig, session_id="dead-session", session_key="dead-key")
+    refuse_injection(rig)
+    result = fire(rig, rule_id)
+    event = rig.sentinel.store.last_event(rule_id)
+    rig.sentinel.store.set_delivery(event.id, result.outcome.value, "session not live")
+    line = f"rule {rule_id}: last alert (event #{event.id}) held: session not live"
+    assert line in handler(rig)("status", session_id="s")
+    assert "(held: session not live)" in handler(rig)("list", session_id="s")
+    events = json.loads(rig.ctx.tools["sentinel_events"]["handler"]({"rule_id": rule_id}))
+    assert events["events"][0]["delivery"] == "held: session not live"

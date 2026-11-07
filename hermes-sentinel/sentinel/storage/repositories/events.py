@@ -92,7 +92,8 @@ class EventRepository:
         return EventRecord(
             id=int(row[0]), rule_id=row[1], ts=row[2], caption=row[3], reason=row[4],
             confidence=row[5], source=row[6], snapshot_path=str(snap) if snap else None,
-            feedback=row[8],
+            feedback=row[8], delivery=row[9], delivery_detail=row[10] or "",
+            delivery_ts=row[11],
         )  # fmt: skip
 
     def get_event(self, event_id: int) -> EventRecord | None:
@@ -116,6 +117,15 @@ class EventRepository:
         with self._db.tx() as conn:
             n = conn.execute(
                 "UPDATE events SET feedback = ? WHERE id = ?", (feedback, event_id)
+            ).rowcount
+        return self.get_event(event_id) if n else None
+
+    def set_delivery(self, event_id: int, outcome: str, detail: str = "") -> EventRecord | None:
+        """Record how the event's alert went (``delivered``, ``held``, ...) and when."""
+        with self._db.tx() as conn:
+            n = conn.execute(
+                "UPDATE events SET delivery = ?, delivery_detail = ?, delivery_ts = ? WHERE id = ?",
+                (clip(outcome, 32), clip(detail, MAX_REASON_LEN), to_iso(self._clock()), event_id),
             ).rowcount
         return self.get_event(event_id) if n else None
 

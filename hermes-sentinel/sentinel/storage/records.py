@@ -76,6 +76,9 @@ class EventRecord:
     source: str
     snapshot_path: str | None
     feedback: str | None
+    delivery: str | None = None
+    delivery_detail: str = ""
+    delivery_ts: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Plain-dict form for JSON replies."""

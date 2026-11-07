@@ -20,6 +20,8 @@ from .formatting import (
     format_event_message,
     sanitize_untrusted,
 )
+from .outcome import AlertOutcome
+from .outcome import label as delivery_label
 from .rate_limit import HourlyWindow
 from .routing import (
     LOCAL_SURFACES,
@@ -40,6 +42,7 @@ __all__ = [
     "MAX_MESSAGE_LEN",
     "MAX_ORIGIN_VALUE",
     "MAX_REASON_LEN",
+    "AlertOutcome",
     "Alerter",
     "Delivery",
     "DeliveryTestResult",
@@ -51,6 +54,7 @@ __all__ = [
     "adopt_session_rules",
     "bind_rules",
     "capture_origin",
+    "delivery_label",
     "describe_held",
     "effective_origin",
     "format_delivery_test",

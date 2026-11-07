@@ -48,12 +48,24 @@ def local_time(ts: str) -> str:
     return when.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z").strip()
 
 
-def _headline(rule: Any, event: Any, source_name: str, suppressed: int) -> list[str]:
+def _summary_line(rule: Any, event: Any, source_name: str, what: str) -> str:
+    """One self-contained line (what, where, when, confidence) that survives truncation.
+
+    Only user-written rule text appears here; the model-written caption stays in the
+    untrusted block.
+    """
     conf = event.confidence
-    conf_text = f" (confidence {conf:.2f})" if isinstance(conf, (int, float)) else ""
+    conf_text = f", confidence {conf:.2f}" if isinstance(conf, (int, float)) else ""
+    clock = local_time(event.ts).split(" ")[1:2]
+    when = f" at {clock[0]}" if clock else ""
+    seen = f'"{what[:80]}" seen on {source_name}{when}{conf_text}'
+    return f"[Sentinel alert] {seen} (rule {rule.id})."
+
+
+def _headline(rule: Any, event: Any, source_name: str, suppressed: int) -> list[str]:
     what = " ".join((rule.text or rule.question or "").split())
     lines = [
-        f"[Sentinel alert] Rule {rule.id} fired on {source_name}{conf_text}.",
+        _summary_line(rule, event, source_name, what),
         f'Rule {rule.id} ("{what[:200]}"). Event #{event.id} at {local_time(event.ts)}.',
     ]
     if suppressed:
