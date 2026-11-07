@@ -6,7 +6,7 @@ Aim to have the PR open by Mon 2026-11-10 evening. The Typeform is allowed as so
 1. Merge the api, ui and kit work. `bash scripts/check.sh` passes (ruff, pytest, rule_lint).
 2. Re-check `plugin.yaml` against `register(ctx)`: `provides_tools` lists the 9 tools, `requires_hermes: ">=0.22.5"`, `version: "0.1.0"` (also `__version__` in `sentinel/version.py`, CHANGELOG, entry).
 3. README: remove "There is no Desktop pane in this release" and "Desktop UI pane: not included" (the pane now exists); document the pane and add screenshots. Confirm the Disclosure section mentions the dashboard API.
-4. Add the screenshots at `hermes-sentinel/docs/screenshots/` (alert-telegram.png, desktop-pane.png, sentinel-status.png; PNG/JPEG only, text-sized, no faces or private rooms). Reference them in the README with relative paths.
+4. Screenshots live in `hermes-sentinel/docs/images/` (today: `live-test-alert.jpg` and the stub-host `pane-preview-wide.png`). After the real Desktop and Telegram runs, add `desktop-pane.png` and `alert-telegram.png` there (PNG/JPEG only, no faces or private rooms) and list them in the catalog entry's `screenshots:`. Reference them in the README with relative paths.
 5. Confirm no `__pycache__`, `.pyc`, binaries or archives are tracked: `git ls-files | grep -E '\.(pyc|pyo|so|dll|dylib|exe|wasm|zip|tar|gz)$'` prints nothing.
 
 ## 2. Decide what the public repo contains
@@ -26,7 +26,7 @@ Do removals in a commit before choosing the SHA (the SHA must be the last commit
 
 ## 4. Make the repo public (rule 5: owner submits)
 1. GitHub Settings > Danger Zone > Change visibility > Public. MIT licence file is at `hermes-sentinel/LICENSE`; consider a copy at the root.
-2. Verify from a logged-out shell: `git ls-remote https://github.com/StarAtNyte/hermes-sentinel HEAD` and open `https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<SHA>/hermes-sentinel/docs/screenshots/desktop-pane.png`.
+2. Verify from a logged-out shell: `git ls-remote https://github.com/StarAtNyte/hermes-sentinel HEAD` and open `https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<SHA>/hermes-sentinel/docs/images/live-test-alert.jpg`.
 3. Search the history for secrets before it goes public (`git log -p | grep -iE 'api[_-]?key|token|password|secret'`).
 
 ## 5. Validate in an isolated home
