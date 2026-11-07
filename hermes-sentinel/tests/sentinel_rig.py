@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from harness.engine_rig import RELAXED_PACING
 from harness.fake_sources import FakeClock, FakeSource, SourceError
 from harness.plugin_loader import plugin_module
 
@@ -71,8 +72,7 @@ class Rig:
         self.clock = clock or FakeClock(1000.0)
         self.sources: dict[str, Any] = dict(sources or {})
         self.opened: list[str] = []
-        if config:
-            ctx.config.update(config)
+        ctx.config.update({**RELAXED_PACING, **(config or {})})
         kwargs: dict[str, Any] = {}
         if wall_clock is not None:
             kwargs["wall_clock"] = wall_clock

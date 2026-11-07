@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from harness.engine_rig import RELAXED_PACING
 from harness.fake_ctx import FakeLlm
 from harness.fake_sources import FakeClock
 from harness.plugin_loader import plugin_module
@@ -93,7 +94,7 @@ class JudgingRig:
             judge=judge_pkg.Judge(self.llm),
             alerter=alerts.Alerter(ctx, clock=self.clock, per_rule_min_interval=0),
             budget=self.budget,
-            config=config_mod.SentinelConfig(**config),
+            config=config_mod.SentinelConfig(**{**RELAXED_PACING, **config}),
             settings=engine_mod.EngineSettings(confirm_interval=1.0, queue_size=queue_size),
             source_factory=lambda spec: self.source,
             source_key=lambda s: s,

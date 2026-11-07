@@ -39,6 +39,8 @@ class StatusReporter:
             "errors": rt.errors,
             "budget_skips": rt.budget_skips,
             "dropped": rt.dropped,
+            "judge_calls_hour": rt.pacing.used(),
+            "judge_cap_hour": rt.pacing.calls_per_hour,
             "last_verdict": verdict.to_dict() if verdict is not None else None,
             "last_checked": (
                 datetime.fromtimestamp(rt.last_judged_at).astimezone().isoformat(timespec="seconds")

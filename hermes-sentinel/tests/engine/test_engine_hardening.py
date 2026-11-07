@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from harness.engine_rig import RELAXED_PACING
 from harness.fake_sources import FakeClock
 from harness.plugin_loader import plugin_module
 
@@ -93,7 +94,7 @@ class H:
             budget=budget_mod.Budget(
                 self.store, per_hour=None, per_day=None, clock=lambda: self.wall[0]
             ),
-            config=config_mod.SentinelConfig(),
+            config=config_mod.SentinelConfig(**RELAXED_PACING),
             settings=settings
             or engine_mod.EngineSettings(
                 confirm_interval=1.0,
@@ -245,12 +246,12 @@ def test_no_judging_during_cooldown(h):
     h.judge.default = Verdict(True, 0.95, caption="hit")
     h.step("change")
     assert h.judge.calls == 1 and len(h.injected("[Sentinel alert]")) == 1
-    h.judge.default = Verdict(False, 0.95)  # the scene clears: the rule re-arms into cooldown
-    for _ in range(4):
+    h.judge.default = Verdict(False, 0.95)
+    calls = h.judge.calls
+    for _ in range(4):  # latched in "firing" with the cooldown running: still not judged
         h.clock.advance(1.0)
         h.step("change")
-    assert h.engine.rule_status("r1")["state"] == "cooldown"
-    calls = h.judge.calls
+    assert h.engine.rule_status("r1")["state"] == "firing"
     for _ in range(5):
         h.clock.advance(1.0)
         h.step("change")

@@ -139,6 +139,10 @@ Narrow (700 px):
 
 Bugs this found and fixed: React key warnings (keys were passed inside spread props), the source grid never applied because a later CSS rule overrode it (one tile stretched to full width), long source paths overflowing the tile title, setup rows without spacing, and a green "not running" badge on a rule that was not watching.
 
+## Webcam finding
+
+A later live test with a real webcam (isolated Hermes home, `camera:0`, a person raising a hand) exposed a cost bug that the video-file run could not. The rule fired once (confidence 0.91) but the judge was then called every 9-10 s for about two minutes, roughly 6 calls per minute and about 6k tokens each, including at least 10 calls inside the 300 s cooldown. A person moving in front of a webcam keeps the change gate firing, and the cooldown check only looked at the `cooldown` state while a fired rule is in `firing` until the scene clears. Fixed: no judge call is queued or run while the cooldown runs, and each rule now has a minimum 10 s gap and a 30 per hour cap between its judge calls. Covered by deterministic tests with a scene that changes on every frame over 30 virtual minutes. Retest with the webcam is pending.
+
 ## Quality gate on the same commit
 
 `scripts/check.sh --with-hermes` passes: `hermes plugins validate` reports the security scan as safe, `hermes plugins doctor` is ok, with 1430 plugin tests and 195 tool tests. An earlier validate run caught the install scanner flagging a phrase in the README; that is fixed.

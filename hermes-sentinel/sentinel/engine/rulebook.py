@@ -7,6 +7,7 @@ import logging
 from ..rules import RuleSpec, RuleStateMachine
 from .capture import CaptureWorkers
 from .jobs import JobQueue
+from .jobs.pacing import RulePacing
 from .models import RuleRuntime
 from .state import EngineState
 
@@ -78,6 +79,11 @@ class RuleBook:
                 spec, clock=state.clock, stale_after_seconds=state.config.stale_after_seconds
             ),
             source_key=state.source_key(spec.source),
+            pacing=RulePacing(
+                state.config.rule_min_interval_seconds,
+                state.config.rule_calls_per_hour,
+                clock=state.clock,
+            ),
         )
 
     def _update_locked(self, rt: RuleRuntime, spec: RuleSpec) -> None:

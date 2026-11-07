@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 from ...judging import JudgeItem, JudgingPipeline
-from ...rules import RuleState
 from ..infra import ExampleCache
 from ..jobs import JobQueue, schedule_active
 from ..models import Job, Prepared
@@ -77,9 +76,11 @@ class JudgeRunner:
         spec = rt.spec
         if not schedule_active(spec, state.wall()):
             return None
-        if rt.machine.state is RuleState.COOLDOWN:
+        if rt.machine.cooling_down(state.clock()):
             return None  # queued before the rule fired; the verdict could not count
-        if state.stop.is_set():
+        if state.stop.is_set() or not rt.pacing.begin_call(
+            state.clock(), confirming=job.confirming
+        ):
             return None
         item = JudgeItem(
             spec=spec,
@@ -101,5 +102,6 @@ class JudgeRunner:
                 return  # unloaded while the model was thinking: no store writes, no alerts
             if outcome.budget_refused:
                 entry.rt.budget_skips += 1
+                entry.rt.pacing.cancel_call()
             elif outcome.verdict is not None:
                 self._applier.apply(entry.rt, entry.job, outcome.verdict, outcome.from_fallback)

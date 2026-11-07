@@ -52,6 +52,23 @@ def _engine_lines(engine: Any, scoped: bool, visible: set[str]) -> list[str]:
     return lines
 
 
+def _pacing_lines(sentinel: Sentinel, engine: Any, rules: list[Any]) -> list[str]:
+    """The per-rule judge limits, then each visible rule that has used some of its hour."""
+    cfg = sentinel.config
+    lines = [
+        f"  per-rule limits: a judge call at most every {cfg.rule_min_interval_seconds:g} s "
+        f"and {cfg.rule_calls_per_hour} per hour"
+    ]
+    for spec in rules:
+        status = engine.rule_status(spec.id)
+        if status and status["judge_calls_hour"]:
+            lines.append(
+                f"  rule {spec.id}: {status['judge_calls_hour']}/{status['judge_cap_hour']} "
+                "judge calls this hour"
+            )
+    return lines
+
+
 def _delivery_lines(sentinel: Sentinel) -> list[str]:
     blocked = sentinel.alerter.delivery_blocked()
     if blocked:
@@ -83,6 +100,7 @@ def status_text(sentinel: Sentinel, version: str, caller: dict[str, Any] | None 
     lines = [f"{head}: {_engine_state(engine)}; {active} active / {len(rules)} rules."]
     if engine is not None:
         lines += _engine_lines(engine, scoped, {r.id for r in rules})
+        lines += _pacing_lines(sentinel, engine, rules)
     lines += _delivery_lines(sentinel)
     lines.append(_budget_line(sentinel))
     lines += [f"  config: {problem}" for problem in sentinel.config.problems]

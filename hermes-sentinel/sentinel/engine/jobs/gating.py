@@ -21,6 +21,17 @@ __all__ = ["DefaultGateFactory", "FrameGate", "TRIGGER_IDLE_MIN_SECONDS"]
 TRIGGER_IDLE_MIN_SECONDS = 6 * 3600.0
 
 
+def _reason_for(rt: RuleRuntime, result: Any, confirming: bool) -> str:
+    """Why a frame deserves a judge look (``change``, ``tick``, ``confirm``), or ``""``."""
+    if getattr(result, "changed", False):
+        return "change"
+    if getattr(result, "tick", False):
+        return "tick"
+    if confirming:
+        return "confirm"
+    return "change" if rt.deferred else ""  # a look pacing held back, now judged on this frame
+
+
 class DefaultGateFactory:
     """Builds the production :class:`~sentinel.vision.gate.ChangeGate` for a rule."""
 
@@ -83,8 +94,9 @@ class FrameGate:
         """The job for one rule and frame, or ``None`` (cooling down, quiet, backing off)."""
         with suppress(Exception):
             rt.machine.poll(now)
-        if rt.machine.state is RuleState.COOLDOWN:
-            # A verdict could not fire (and would be thrown away): do not pay for it.
+        if rt.machine.cooling_down(now):
+            # No verdict can fire the rule (also while it is latched in "firing"): do not pay.
+            rt.deferred = False
             return None
         try:
             if rt.gate is None:
@@ -97,19 +109,37 @@ class FrameGate:
         return self._job_for(rt, result, now, frame)
 
     def _job_for(self, rt: RuleRuntime, result: Any, now: float, frame: Any) -> Job | None:
-        """The judge job a gate result calls for, or ``None`` (quiet, or backing off)."""
-        reason = ""
-        if getattr(result, "changed", False):
-            reason = "change"
-        elif getattr(result, "tick", False):
-            reason = "tick"
-        elif rt.machine.state is RuleState.CANDIDATE and now >= rt.next_confirm_at:
-            reason = "confirm"
+        """The judge job a gate result calls for, or ``None`` (quiet, backing off or paced)."""
+        confirming = rt.machine.state is RuleState.CANDIDATE and now >= rt.next_confirm_at
+        reason = _reason_for(rt, result, confirming)
         if not reason or now < rt.judge_backoff_until:
             return None
-        job = Job(rt.spec.id, now, frame, reason, bbox=getattr(result, "bbox", None))
+        if not self._pacing_allows(rt, now, confirming):
+            rt.deferred = rt.deferred or reason != "confirm"
+            return None
+        rt.deferred = False
+        bbox = getattr(result, "bbox", None)
+        job = Job(rt.spec.id, now, frame, reason, bbox=bbox, confirming=confirming)
         job.sequence = self._motion_sequence(rt, frame, now)
         return job
+
+    def _pacing_allows(self, rt: RuleRuntime, now: float, confirming: bool) -> bool:
+        """The per-rule safety net: hourly cap (announced once) and the gap between calls."""
+        if not rt.pacing.has_room():
+            self._announce_cap(rt)
+            return False
+        return confirming or rt.pacing.spaced(now)
+
+    def _announce_cap(self, rt: RuleRuntime) -> None:
+        """Tell the user once that a rule used its hourly judge calls (it keeps its state)."""
+        if not rt.pacing.take_cap_notice():
+            return
+        self._state.alerter.notice(
+            f"Rule {rt.spec.id} reached its limit of {rt.pacing.calls_per_hour} judge calls per "
+            "hour and pauses checking until the hour frees up; it keeps its state. "
+            "Raise rule_calls_per_hour if this is expected.",
+            origin=rt.spec.origin,
+        )
 
     def _motion_sequence(self, rt: RuleRuntime, frame: Any, now: float) -> tuple[Any, ...]:
         """The ordered frames a motion rule is judged on (empty: judge a single still)."""

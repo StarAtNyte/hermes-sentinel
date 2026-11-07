@@ -109,6 +109,14 @@ class RuleStateMachine:
             self._advance_time(now)
             return StepResult(self._state, previous, counted=False)
 
+    def cooling_down(self, now: float | None = None) -> bool:
+        """True while a cooldown is running, whether the state is ``firing`` or ``cooldown``.
+
+        No verdict can fire the rule in that time, so judging it would only spend model calls.
+        """
+        with self._lock:
+            return self._peek(now) < self._cooldown_until
+
     def reset(self) -> None:
         """Forget all evidence and cooldown; back to ``idle``."""
         with self._lock:

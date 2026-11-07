@@ -532,3 +532,12 @@ def test_concurrent_observers_fire_once():
         t.join()
     assert len(fired) == 1
     assert sm.fire_count == 1
+
+
+def test_cooling_down_covers_the_latched_firing_state():
+    sm = make(cooldown=300)
+    feed(sm, [(0, H), (1, H)])
+    assert sm.state is RuleState.FIRING
+    assert sm.cooling_down(100) and sm.cooling_down(300.5)
+    assert not sm.cooling_down(301)
+    assert not make().cooling_down(0)

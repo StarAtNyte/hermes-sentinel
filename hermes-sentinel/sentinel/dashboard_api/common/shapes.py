@@ -38,6 +38,7 @@ def rule_item(live: Any, spec: Any) -> dict[str, Any]:
         "paused": not spec.enabled,
         "last_event_at": last.ts if last else None,
         "vision_calls_hour": hour,
+        "judge_cap_hour": (status or {}).get("judge_cap_hour"),
         "cooldown_s": spec.cooldown_seconds,
         "hold_s": spec.hold_seconds,
     }

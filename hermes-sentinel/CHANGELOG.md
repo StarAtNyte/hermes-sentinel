@@ -6,6 +6,7 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ### Added
 
+- Per-rule judge pacing as a safety net under the cooldown: settings `rule_min_interval_seconds` (10 s between judge calls; confirmation looks exempt) and `rule_calls_per_hour` (30 per rolling hour). At the cap the rule keeps its state, you get one notice, and judging resumes as the hour frees. Shown in `/sentinel status` and as `judge_cap_hour` in the dashboard rule payload.
 - `/sentinel setup` and the `sentinel_setup_check` tool (9 tools now): one command that checks Python packages, the `allow_gateway_injection` setting, the vision model, cameras and monitors, `default_source`, watcher state, storage and free disk, the alert route, budget caps and rules with offline sources, then prints `Ready: yes - N items to review` or `Ready: no - N things to fix` with the exact fix for each problem.
 - Dashboard `GET /setup` and a compact Setup checklist card on the Desktop pane (shown while any check is not ok).
 - `sentinel_watch` points at `/sentinel setup` when a fail-level problem exists.
@@ -14,6 +15,7 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 
 ### Fixed
 
+- A rule that had fired kept being judged during its cooldown while the scene kept changing (a person moving in front of a webcam): the cooldown check only looked at the `cooldown` state, but a fired rule sits in `firing` until the scene clears. Judge calls (gate and worker) are now skipped for the whole cooldown. Found in the live webcam test: about 6 calls per minute against a 60 per hour budget.
 - The pane found no Sentinel when the plugin was loaded under a profile-scoped module name; it now scans `sys.modules` and states which process must host it.
 - Source masking covers `snapshot:`/`folder:` prefixes, token-only userinfo and secret RTSP path segments.
 - The Watch form no longer sends masked source keys; Source is a free-text field. Onboarding no longer claims sources are auto-detected.

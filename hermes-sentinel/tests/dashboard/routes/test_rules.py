@@ -26,6 +26,7 @@ def test_rules_list_shape(client, rig):
         "paused",
         "last_event_at",
         "vision_calls_hour",
+        "judge_cap_hour",
         "cooldown_s",
         "hold_s",
     }

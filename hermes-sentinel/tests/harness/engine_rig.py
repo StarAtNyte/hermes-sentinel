@@ -19,6 +19,8 @@ judge_mod = plugin_module("sentinel.vision")
 rules = plugin_module("sentinel.rules")
 store_mod = plugin_module("sentinel.storage")
 Verdict = judge_mod.Verdict
+#: Per-rule judge pacing turned off, so tests that step the clock by seconds see every call.
+RELAXED_PACING = {"rule_min_interval_seconds": 0.0, "rule_calls_per_hour": 1000}
 FRAME = np.full((60, 80, 3), 100, np.uint8)
 
 
@@ -92,7 +94,7 @@ class Harness:
             judge=self.judge,
             alerter=self.alerter,
             budget=self.budget,
-            config=config or config_mod.SentinelConfig(batch_judging=False),
+            config=config or config_mod.SentinelConfig(batch_judging=False, **RELAXED_PACING),
             settings=settings
             or engine_mod.EngineSettings(
                 confirm_interval=1.0,

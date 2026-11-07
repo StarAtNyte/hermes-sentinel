@@ -175,3 +175,27 @@ def test_an_empty_band_is_replaced_by_the_default():
     cfg = load({"second_opinion_band_low": 0.9, "second_opinion_band_high": 0.6})
     assert (cfg.second_opinion_band_low, cfg.second_opinion_band_high) == (0.5, 0.8)
     assert any("band" in problem for problem in cfg.problems)
+
+
+def test_pacing_defaults_and_values():
+    assert (SentinelConfig().rule_min_interval_seconds, SentinelConfig().rule_calls_per_hour) == (
+        10.0,
+        30,
+    )
+    cfg = load({"rule_min_interval_seconds": "2.5", "rule_calls_per_hour": 100})
+    assert (cfg.rule_min_interval_seconds, cfg.rule_calls_per_hour) == (2.5, 100)
+    assert cfg.problems == ()
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("rule_min_interval_seconds", -1),
+        ("rule_min_interval_seconds", 99999),
+        ("rule_calls_per_hour", 0),
+        ("rule_calls_per_hour", 5000),
+    ],
+)
+def test_bad_pacing_values_fall_back(key, value):
+    cfg = load({key: value})
+    assert cfg.problems and getattr(cfg, key) == getattr(SentinelConfig(), key)

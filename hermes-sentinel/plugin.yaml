@@ -96,6 +96,14 @@ config_schema:
     type: int
     default: 6
     description: "Cap on second opinions per hour across all rules (0 turns them off)."
+  rule_min_interval_seconds:
+    type: float
+    default: 10
+    description: "Safety net: least seconds between two judge calls of one rule (0..3600; 0 turns it off). Confirmation looks of a rule already collecting k-of-n evidence are exempt."
+  rule_calls_per_hour:
+    type: int
+    default: 30
+    description: "Safety net: most judge calls one rule may make per rolling hour (1..1000). When reached the rule keeps its state, you get one notice, and judging resumes as the window frees."
   stream_url_1:
     type: secret
     env: SENTINEL_STREAM_URL_1

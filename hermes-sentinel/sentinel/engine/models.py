@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..judging import JudgeItem
 from ..rules import RuleSpec, RuleStateMachine
 from ..vision import Verdict
+
+if TYPE_CHECKING:  # runtime import would be circular: jobs.gating imports this module
+    from .jobs.pacing import RulePacing
 
 __all__ = ["Job", "Prepared", "RuleRuntime", "SourceWorker"]
 
@@ -23,6 +26,7 @@ class Job:
     reason: str
     bbox: tuple[int, int, int, int] | None = None  # gate's changed region, input-frame pixels
     sequence: tuple[Any, ...] = ()  # motion rules: earlier frames plus this one, oldest first
+    confirming: bool = False  # an extra look of a candidate episode, spaced by confirm_spacing
 
 
 @dataclass(eq=False)
@@ -32,6 +36,7 @@ class RuleRuntime:
     spec: RuleSpec
     machine: RuleStateMachine
     source_key: str
+    pacing: RulePacing
     gate: Any = None
     queued: Job | None = None
     in_flight: bool = False
@@ -44,6 +49,7 @@ class RuleRuntime:
     last_judged_at: float | None = None  # wall clock
     last_reason: str = ""
     next_confirm_at: float = 0.0
+    deferred: bool = False  # a change or tick was held back by pacing; look again when allowed
     judge_backoff_until: float = 0.0
     last_event_id: int | None = None
 

@@ -201,14 +201,11 @@ def test_cooldown_rules_are_not_queued_into_a_batch(make):
     three_rules(rig)
     rig.answers = {"a": (True, 0.95), "b": (True, 0.95), "c": (True, 0.95)}
     rig.round()
-    rig.answers = {}  # the scene clears: each rule re-arms into its cooldown
+    assert rig.used() == 1
+    assert all(rig.engine.rule_status(r)["state"] == "firing" for r in "abc")
     rig.stage("a", "b", "c")
     rig.round()
-    assert rig.used() == 2
-    assert all(rig.engine.rule_status(r)["state"] == "cooldown" for r in "abc")
-    rig.stage("a", "b", "c")
-    rig.round()
-    assert rig.used() == 2  # cooling down: not queued, not judged, not paid for
+    assert rig.used() == 1  # cooling down (even while latched): not queued, not judged, not paid
 
 
 def test_different_frames_are_not_batched(make):
@@ -443,8 +440,8 @@ def test_no_second_opinion_while_the_rule_is_latched_or_cooling(make):
     rig.round()  # fires: now in cooldown
     rig.answers = {"a": (True, 0.75)}
     rig.stage("a", bbox=BBOX)
-    rig.round()  # still latched: judged to detect the end of the episode, never re-verified
-    assert rig.purposes() == ["sentinel:a", "sentinel:a"]
+    rig.round()  # latched and cooling down: not judged at all, so never re-verified
+    assert rig.purposes() == ["sentinel:a"]
 
 
 def test_batched_borderline_verdicts_are_each_verified(make):

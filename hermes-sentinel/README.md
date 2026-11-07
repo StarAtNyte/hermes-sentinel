@@ -284,6 +284,8 @@ Set under `plugins.entries.hermes-sentinel.settings.<key>` in `config.yaml`. Inv
 | `second_opinion` | `true` | Re-check a borderline positive verdict on a higher-resolution crop with a differently worded prompt. |
 | `second_opinion_band_low` / `second_opinion_band_high` | `0.5` / `0.8` | Confidence band that earns a second opinion. Verdicts at or above the high edge are trusted. |
 | `second_opinion_per_hour` | `6` | Cap on second opinions per rolling hour, across all rules (`0` turns them off). |
+| `rule_min_interval_seconds` | `10` | Safety net: least seconds between two judge calls of one rule (0-3600; `0` turns it off). The extra looks of a rule collecting its k-of-n confirmations are exempt. |
+| `rule_calls_per_hour` | `30` | Safety net: most judge calls one rule may make per rolling hour (1-1000), on top of the global budget. At the cap you get one notice, the rule keeps its state and judging resumes as the hour frees. |
 
 New rules copy `confirm_k`, `confirm_n` and `confidence_threshold` at creation; changing the settings later does not alter existing rules.
 
@@ -294,7 +296,8 @@ Sentinel is designed so that a quiet scene costs nothing and a busy one hits a c
 - **Gate first.** No frame reaches the model unless the local gate saw a change, an idle tick is due, or a rule is collecting its confirmation looks.
 - **Idle ticks.** Trigger rules: one start-up look, then ticks no more often than every 6 hours. Condition/absence rules: every `idle_check_seconds`.
 - **k-of-n.** A candidate event needs 2 positives out of 3 looks by default. Looks are spaced about 2 seconds apart, or `hold / (n - 1)` for rules with a hold time.
-- **Cooldown.** After an alert a rule is not judged until its cooldown ends.
+- **Cooldown.** After an alert a rule is not judged until its cooldown ends, including while it stays latched in `firing` because the scene is still active. A webcam showing a person who keeps moving would otherwise send a frame to the model every few seconds.
+- **Per-rule pacing.** Whatever keeps the gate firing, one rule makes a judge call at most every `rule_min_interval_seconds` (10 s) and at most `rule_calls_per_hour` (30) per rolling hour. `/sentinel status` shows each rule's use of its hour and the dashboard rule payload carries `judge_cap_hour`.
 - **Queue.** At most one pending job per rule and eight overall; the oldest is dropped.
 - **Budgets.** 60 checks per hour and 500 per rolling day by default. When exhausted, judging pauses, you get one notice, and the gate keeps running. `/sentinel budget` says when capacity returns.
 - **Batching.** Rules that fire on the same frame share one vision call and one budget unit (rules with teaching examples or a motion question are judged on their own). Batched calls are charged to a shared `batch` usage id, not to one rule. If the model's batch reply cannot be used, the rules it did not answer are judged one by one, each call counted, and those rules get no second opinion. The worst case for a frame with N batched rules is therefore N + 1 calls (the batch plus one per rule), plus second opinions only for rules the batch did answer.
@@ -302,7 +305,7 @@ Sentinel is designed so that a quiet scene costs nothing and a busy one hits a c
 - **Slow drift.** A gradual change that the gate's fast background would absorb is caught by comparing against the last judged frame about once a second; two agreeing comparisons start one normal judged look, so it costs what any other change costs. Drift thresholds are internal (not settings).
 - **Alert rate.** At most 20 alerts and 6 notices per hour overall, and one alert per rule every 30 seconds. Suppressed alerts are stored as events and counted in the next alert.
 
-Typical numbers, from the logic above: a trigger rule on a quiet doorway uses 1 call at start-up plus about 3 per real event (one detecting look and up to two confirming looks). A condition rule on a quiet scene uses at most 12 calls per hour (every 300 s), plus motion-driven looks. A very busy scene is bounded by the 60 per hour cap, and because 500 per day is about 21 per hour, sustained maximum activity is limited by the daily cap. `sentinel_look` and `/sentinel test` each use one call from the same vision budget. Rule compiling is a separate text call, limited to 10 per hour.
+Typical numbers, from the logic above: a trigger rule on a quiet doorway uses 1 call at start-up plus about 3 per real event (one detecting look and up to two confirming looks). A condition rule on a quiet scene uses at most 12 calls per hour (every 300 s), plus motion-driven looks. A scene that changes on every frame (a person moving in front of a webcam) costs 2 calls to fire a trigger rule, none for the whole cooldown, and then at most one call per 10 s up to the per-rule cap: at most 30 calls per hour per rule, however long the movement lasts. A very busy scene is bounded by the 60 per hour cap, and because 500 per day is about 21 per hour, sustained maximum activity is limited by the daily cap. `sentinel_look` and `/sentinel test` each use one call from the same vision budget. Rule compiling is a separate text call, limited to 10 per hour.
 
 ## Privacy and security
 
