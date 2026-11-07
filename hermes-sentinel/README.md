@@ -2,6 +2,12 @@
 
 Give Hermes eyes: describe in plain English what to watch for on a camera or your screen, and Hermes alerts you (with a photo) when it happens and remembers what it saw.
 
+## Verified live
+
+Run on 2026-11-07 against Hermes v0.23.0 in an isolated home with a real vision model: from one plain-English request the agent found the Sentinel tools, created a rule, and when the mug left a test video it stored an event with a snapshot and injected an alert (one judge call, confidence 0.98). Details, setup steps and what is still untested (Desktop pane, Telegram, real webcam) are in [docs/LIVE_TEST.md](docs/LIVE_TEST.md).
+
+![Snapshot stored with the live-test event](docs/images/live-test-alert.jpg)
+
 ## What it does
 
 You tell Hermes what to watch. Sentinel checks frames on your machine with a cheap change detector and asks a vision model about a frame only when something changed. When the answer is confirmed across several looks, it wakes the agent in the chat that created the rule.
@@ -354,6 +360,7 @@ What was a limitation and is now handled, what is reduced but not gone, and what
 
 **Remains**
 
+- Classic CLI rendering: in `hermes --cli` an injected alert turn was not shown live in the terminal during the live test (it is stored in the session history), and the photo is sent as a file path. Desktop, Telegram and Discord render gateway turns and native images; use one of them for alerts you want to see. Desktop and Telegram were not tested live yet.
 - No audio: Sentinel is vision-only.
 - No video-site streams such as YouTube: extracting them conflicts with the sites' terms and needs downloaded binaries, which the catalog forbids. Use a camera URL you own or a local `file:` recording.
 - Screen capture needs a display, so it is not available on a headless server.

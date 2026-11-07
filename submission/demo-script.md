@@ -2,6 +2,10 @@
 
 One story: watch a mug, a hand takes it, the phone buzzes with a photo. Then the Desktop pane and a plain-English history question. Nothing is sped up except waiting; show that it is real.
 
+## Recording surface
+
+Record on Hermes Desktop or Telegram, not the classic CLI. In the live test (2026-11-07) the classic `hermes --cli` terminal did not render the injected alert turn live and sent the photo as a file path; the alert displays on surfaces that render gateway turns and native images. Desktop and Telegram have not been tested live yet, so rehearse on the chosen surface first. If a live webcam take is unreliable, use the `file:` video source (see the fallback section); the live test used it successfully. See `hermes-sentinel/docs/LIVE_TEST.md`.
+
 ## Setup checklist (do the day before, rehearse twice)
 
 **Separate Hermes home.** Record in a throwaway profile, not your real `~/.hermes`.
