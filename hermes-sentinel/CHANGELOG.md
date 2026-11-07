@@ -13,6 +13,8 @@ All notable changes to hermes-sentinel. Versions follow SemVer.
 - Desktop pane (`desktop/plugin.js`, backend `dashboard/plugin_api.py`): source tiles, rules with pause/resume/delete, Watch form, event timeline with feedback buttons, status chip.
 - `encoding=data_url` on the frame and snapshot endpoints (JSON `{ok, data_url}`); raw JPEG without the parameter.
 
+- Latched backoff: setting `latched_min_interval_seconds` (default 60 s, 10..3600). A rule that has fired and finished its cooldown but is still latched in `firing` is judged at most this often, because those looks only detect that the scene cleared. The normal 10 s gap, the confirmation looks and the hourly cap are unchanged. Shown in `/sentinel status`. A live replay with a looping, continuously moving video made 24 judge calls in 4.5 minutes for one alert before this change.
+
 ### Fixed
 
 - A rule that had fired kept being judged during its cooldown while the scene kept changing (a person moving in front of a webcam): the cooldown check only looked at the `cooldown` state, but a fired rule sits in `firing` until the scene clears. Judge calls (gate and worker) are now skipped for the whole cooldown. Found in the live webcam test: about 6 calls per minute against a 60 per hour budget.

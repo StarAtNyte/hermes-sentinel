@@ -50,3 +50,18 @@ def test_cancelled_call_gives_the_slot_back():
     pacing.begin_call(0.0, confirming=False)
     pacing.cancel_call()
     assert pacing.has_room()
+
+
+def test_latched_calls_use_the_longer_interval():
+    clock = FakeClock(0.0)
+    pacing = pacing_mod.RulePacing(10.0, 30, clock=clock, latched_min_interval=60.0)
+    assert pacing.begin_call(0.0, confirming=False)
+    assert pacing.spaced(10.0) and not pacing.spaced(59.9, latched=True)
+    assert not pacing.begin_call(59.9, confirming=False, latched=True)
+    assert pacing.begin_call(60.0, confirming=False, latched=True)
+
+
+def test_latched_interval_never_undercuts_the_normal_one():
+    pacing = pacing_mod.RulePacing(10.0, 30, clock=FakeClock(0.0), latched_min_interval=2.0)
+    pacing.begin_call(0.0, confirming=False)
+    assert not pacing.spaced(5.0, latched=True)

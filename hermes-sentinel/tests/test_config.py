@@ -185,6 +185,8 @@ def test_pacing_defaults_and_values():
     cfg = load({"rule_min_interval_seconds": "2.5", "rule_calls_per_hour": 100})
     assert (cfg.rule_min_interval_seconds, cfg.rule_calls_per_hour) == (2.5, 100)
     assert cfg.problems == ()
+    assert SentinelConfig().latched_min_interval_seconds == 60.0
+    assert load({"latched_min_interval_seconds": "120"}).latched_min_interval_seconds == 120.0
 
 
 @pytest.mark.parametrize(
@@ -192,6 +194,8 @@ def test_pacing_defaults_and_values():
     [
         ("rule_min_interval_seconds", -1),
         ("rule_min_interval_seconds", 99999),
+        ("latched_min_interval_seconds", 5),
+        ("latched_min_interval_seconds", 99999),
         ("rule_calls_per_hour", 0),
         ("rule_calls_per_hour", 5000),
     ],

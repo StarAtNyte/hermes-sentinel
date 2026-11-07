@@ -2,7 +2,9 @@
 
 This is a safety net under the cooldown. Whatever keeps a gate firing (a person moving in
 front of a webcam), one rule cannot spend more than ``min_interval`` seconds apart or
-``calls_per_hour`` calls in any hour.
+``calls_per_hour`` calls in any hour. A latched rule (fired, cooldown over, waiting for a
+refuting verdict to re-arm) only needs to learn that the scene cleared, so it uses the longer
+``latched_min_interval``.
 """
 
 from __future__ import annotations
@@ -19,10 +21,20 @@ class RulePacing:
     """Spacing and hourly cap of one rule's judge calls. Thread-safe."""
 
     def __init__(
-        self, min_interval: float, calls_per_hour: int, *, clock: Callable[[], float]
+        self,
+        min_interval: float,
+        calls_per_hour: int,
+        *,
+        clock: Callable[[], float],
+        latched_min_interval: float = 0.0,
     ) -> None:
-        """``min_interval`` seconds (0 turns spacing off); ``calls_per_hour`` is at least 1."""
+        """``min_interval`` seconds (0 turns spacing off); ``calls_per_hour`` is at least 1.
+
+        ``latched_min_interval`` is the gap used while the rule is latched; it never drops
+        below ``min_interval``.
+        """
         self._min_interval = float(min_interval)
+        self._latched_min_interval = max(float(latched_min_interval), self._min_interval)
         self._cap = HourlyCap(calls_per_hour, clock=clock)
         self._calls_per_hour = int(calls_per_hour)
         self._lock = threading.Lock()  # guards _last_call and _cap_notified
@@ -38,22 +50,23 @@ class RulePacing:
         """Judge calls taken in the current rolling hour."""
         return self._cap.used()
 
-    def spaced(self, now: float) -> bool:
-        """True when ``min_interval`` has passed since the last call (or there was none)."""
+    def spaced(self, now: float, *, latched: bool = False) -> bool:
+        """True when the gap (the latched one if ``latched``) has passed since the last call."""
+        gap = self._latched_min_interval if latched else self._min_interval
         with self._lock:
             last = self._last_call
-        return last is None or now - last >= self._min_interval
+        return last is None or now - last >= gap
 
     def has_room(self) -> bool:
         """True when the rolling hour still has a free call slot."""
         return self._cap.used() < self._calls_per_hour
 
-    def begin_call(self, now: float, *, confirming: bool) -> bool:
+    def begin_call(self, now: float, *, confirming: bool, latched: bool = False) -> bool:
         """Take a call slot at ``now``; ``False`` when the hourly cap or the spacing refuses.
 
         Confirmation looks have their own spacing, so only the cap applies to them.
         """
-        if not confirming and not self.spaced(now):
+        if not confirming and not self.spaced(now, latched=latched):
             return False
         if not self._cap.try_acquire():
             return False

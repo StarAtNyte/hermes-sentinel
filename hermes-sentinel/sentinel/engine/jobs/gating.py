@@ -124,11 +124,11 @@ class FrameGate:
         return job
 
     def _pacing_allows(self, rt: RuleRuntime, now: float, confirming: bool) -> bool:
-        """The per-rule safety net: hourly cap (announced once) and the gap between calls."""
+        """Per-rule safety net: hourly cap (announced once), then the gap (longer if latched)."""
         if not rt.pacing.has_room():
             self._announce_cap(rt)
             return False
-        return confirming or rt.pacing.spaced(now)
+        return confirming or rt.pacing.spaced(now, latched=rt.machine.state is RuleState.FIRING)
 
     def _announce_cap(self, rt: RuleRuntime) -> None:
         """Tell the user once that a rule used its hourly judge calls (it keeps its state)."""

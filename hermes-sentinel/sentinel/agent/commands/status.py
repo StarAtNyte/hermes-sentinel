@@ -57,6 +57,7 @@ def _pacing_lines(sentinel: Sentinel, engine: Any, rules: list[Any]) -> list[str
     cfg = sentinel.config
     lines = [
         f"  per-rule limits: a judge call at most every {cfg.rule_min_interval_seconds:g} s "
+        f"(every {cfg.latched_min_interval_seconds:g} s while latched) "
         f"and {cfg.rule_calls_per_hour} per hour"
     ]
     for spec in rules:

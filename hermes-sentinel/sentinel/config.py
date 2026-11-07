@@ -51,6 +51,7 @@ CONFIG_KEYS: tuple[str, ...] = (
     "second_opinion_band_high",
     "second_opinion_per_hour",
     "rule_min_interval_seconds",
+    "latched_min_interval_seconds",
     "rule_calls_per_hour",
 )
 
@@ -166,6 +167,14 @@ def _read_judging(raw: Mapping[str, Any], problems: list[str]) -> dict[str, Any]
             "rule_min_interval_seconds",
             problems,
         ),
+        "latched_min_interval_seconds": _as_float(
+            raw["latched_min_interval_seconds"],
+            60.0,
+            10.0,
+            3600.0,
+            "latched_min_interval_seconds",
+            problems,
+        ),
         "rule_calls_per_hour": _as_int(
             raw["rule_calls_per_hour"], 30, 1, 1000, "rule_calls_per_hour", problems
         ),
@@ -244,6 +253,7 @@ class SentinelConfig:
     second_opinion_band_high: float = 0.8
     second_opinion_per_hour: int = 6
     rule_min_interval_seconds: float = 10.0
+    latched_min_interval_seconds: float = 60.0
     rule_calls_per_hour: int = 30
     problems: tuple[str, ...] = ()
 

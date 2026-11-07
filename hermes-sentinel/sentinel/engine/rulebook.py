@@ -83,6 +83,7 @@ class RuleBook:
                 state.config.rule_min_interval_seconds,
                 state.config.rule_calls_per_hour,
                 clock=state.clock,
+                latched_min_interval=state.config.latched_min_interval_seconds,
             ),
         )
 

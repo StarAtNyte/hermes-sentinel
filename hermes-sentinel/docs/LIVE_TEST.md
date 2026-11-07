@@ -152,6 +152,16 @@ A later live test with a real webcam (isolated Hermes home, `camera:0`, a person
 - The classic `hermes --cli` terminal did not render the injected alert turn live. The turn is in the session history and `state.db`; Hermes logged "response ready" and a "native image send unavailable" fallback for the local platform, so in the CLI the photo goes out as a path. The alert displays on surfaces that render gateway turns and native images (Desktop, Telegram, Discord). For a demo, use Desktop or Telegram rather than the classic CLI.
 - The first run in a fresh Hermes home shows a telemetry opt-in prompt. The default is "No thanks".
 
+## Replay with continuous motion (real Hermes, real model)
+
+Date: 2026-11-07. A looping generated video of a figure that moves nonstop and raises an arm every 60 s was replayed as the source against real Hermes with a real vision model. One trigger rule (LLM-compiled) had `cooldown_seconds=30`, confirmation 2-of-3 and `motion=True`.
+
+- One event at 18:36:45, one alert.
+- 0 judge calls during the 30 s cooldown.
+- After the cooldown the rule stayed latched in `firing` and was judged every ~10 s (the per-rule minimum interval) from 18:37:25 until it was paused at 18:40:14: 24 calls in 4.5 minutes, about 6k tokens each, up to 30 calls per hour per rule. Each of those calls only served to detect that the scene had cleared.
+- Fix: the latched backoff (`latched_min_interval_seconds`, default 60 s) spaces judge calls of a latched rule at least 60 s apart. It is covered by the simulated 30-minute continuous-motion tests, not yet by a new live run.
+- The real-webcam hand-raise retest with the fixed code is still pending.
+
 ## Not yet tested
 
 - Hermes Desktop: the Sentinel pane and live rendering of the injected alert.

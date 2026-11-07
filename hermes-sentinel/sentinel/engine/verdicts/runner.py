@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from ...judging import JudgeItem, JudgingPipeline
+from ...rules import RuleState
 from ..infra import ExampleCache
 from ..jobs import JobQueue, schedule_active
 from ..models import Job, Prepared
@@ -78,8 +79,9 @@ class JudgeRunner:
             return None
         if rt.machine.cooling_down(state.clock()):
             return None  # queued before the rule fired; the verdict could not count
+        latched = rt.machine.state is RuleState.FIRING
         if state.stop.is_set() or not rt.pacing.begin_call(
-            state.clock(), confirming=job.confirming
+            state.clock(), confirming=job.confirming, latched=latched
         ):
             return None
         item = JudgeItem(

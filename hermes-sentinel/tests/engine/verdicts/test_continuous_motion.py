@@ -68,13 +68,13 @@ def test_no_judge_call_during_cooldown_while_the_scene_keeps_changing(moving_sce
     in_cooldown = [t for t in h.call_times if fired_at < t < fired_at + COOLDOWN]
     assert in_cooldown == []
     after = [t for t in h.call_times if t >= fired_at + COOLDOWN]
-    assert all(b - a >= 10.0 for a, b in zip(after, after[1:], strict=False))
-    assert len(h.call_times) == 2 + int((THIRTY_MINUTES - COOLDOWN) // 10)
+    assert all(b - a >= 60.0 for a, b in zip(after, after[1:], strict=False))
+    assert len(h.call_times) == 2 + int((THIRTY_MINUTES - COOLDOWN) // 60)
     assert len(alerts(h)) == 1
 
 
 def test_hourly_cap_bounds_calls_and_gives_one_notice(moving_scene):
-    h = moving_scene()  # default safety net: 10 s apart, 30 per hour
+    h = moving_scene(latched_min_interval_seconds=10.0)  # 10 s apart even latched, 30 per hour
     run(h, 800.0)  # long enough for the cap to bind, short enough that evidence is not stale
     assert len(h.call_times) == 30
     assert len(h.notices("judge calls per hour")) == 1
@@ -116,3 +116,29 @@ def test_a_change_held_back_by_the_minimum_interval_is_judged_once_it_is_allowed
     h.clock.advance(20.0)
     h.step()  # nothing is pending any more
     assert len(h.call_times) == 2
+
+
+def test_latched_rule_is_judged_no_more_than_once_a_minute_and_still_re_arms(moving_scene):
+    scene_present = lambda t: t < 700.0  # noqa: E731 - the person leaves at t = 800
+    h = moving_scene(positive_at=scene_present, rule_calls_per_hour=1000)
+    run(h)
+    fired_at = h.call_times[1]
+    latched_calls = [t for t in h.call_times if t >= fired_at + COOLDOWN]
+    assert latched_calls[0] - (fired_at + COOLDOWN) < 10.0  # the look held back is judged at once
+    gone = [t for t in latched_calls if t - 100.0 >= 700.0]
+    rearmed_at = gone[1]  # two refuting looks (n - k + 1) re-arm the rule
+    latched = [t for t in latched_calls if t <= rearmed_at]
+    assert all(b - a >= 60.0 for a, b in zip(latched, latched[1:], strict=False))
+    assert len(latched) == 1 + int((rearmed_at - fired_at - COOLDOWN) // 60)
+    assert len(alerts(h)) == 1
+    assert h.store.count_events(rule_id="r1") == 1
+    assert h.engine.rule_status("r1")["state"] != "firing"  # the clear verdict re-armed it
+
+
+def test_a_shorter_latched_interval_is_honoured(moving_scene):
+    h = moving_scene(latched_min_interval_seconds=20.0, rule_calls_per_hour=1000)
+    run(h)
+    fired_at = h.call_times[1]
+    after = [t for t in h.call_times if t >= fired_at + COOLDOWN]
+    assert all(b - a >= 20.0 for a, b in zip(after, after[1:], strict=False))
+    assert len(h.call_times) == 2 + int((THIRTY_MINUTES - COOLDOWN) // 20)
