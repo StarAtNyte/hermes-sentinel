@@ -1,16 +1,29 @@
 # hermes-sentinel
 
-Give Hermes eyes: describe in plain English what to watch for on a camera or your screen, and Hermes alerts you (with a photo) when it happens and remembers what it saw.
+**Tell Hermes in plain English what to watch ("tell me if someone takes my coffee mug"). It watches a webcam, your screen or a stream, and sends you an alert with a photo when it happens.**
 
-## Verified live
+A free local change detector looks at every frame; a vision model only sees frames that changed, under hard call caps you set. Alerts land in the chat where you asked, and you can ask later: "what happened at my desk today?".
 
-Run on 2026-11-07 against Hermes v0.23.0 in an isolated home with a real vision model: from one plain-English request the agent found the Sentinel tools, created a rule, and when the mug left a test video it stored an event with a snapshot and injected an alert (one judge call, confidence 0.98). Details, setup steps and what is still untested (Desktop pane, Telegram, real webcam) are in [docs/LIVE_TEST.md](docs/LIVE_TEST.md).
+## Try it in 2 minutes (no camera needed)
+
+1. Install and enable: `hermes plugins install hermes-sentinel`, then `hermes plugins enable hermes-sentinel` (until the catalog PR is merged, see [Install](#install)).
+2. Add `plugins.entries.hermes-sentinel.allow_gateway_injection: true` to `config.yaml` (needed for alerts outside the classic CLI) and route `auxiliary.sentinel_vision` to a vision-capable model ([Required setup](#required-setup)).
+3. In Hermes run `/sentinel setup`; it lists anything still missing, with the fix.
+4. Put a short MP4 of a desk with a mug that is then taken away somewhere (or generate one with the script in [docs/LIVE_TEST.md](docs/LIVE_TEST.md)).
+5. Tell Hermes: `watch file:/home/me/mug.mp4 and tell me if someone takes my coffee mug` (add `?loop=true` to replay it).
+6. Within seconds of the mug leaving, the alert arrives with a snapshot. Reply `false alarm` or ask `what happened today?`.
+
+## Verified live, and what is not
+
+Run on 2026-11-07 against Hermes v0.23.0 in an isolated home, with a real vision model, in the classic CLI and a `file:` video source: from one plain-English request the agent found the Sentinel tools, created a rule, and when the mug left the video it stored an event with a snapshot and injected an alert (one judge call, confidence 0.98). **Not yet verified:** the real Hermes Desktop app (the Desktop pane was only rendered in a stub host), Telegram delivery with a photo, and a real-webcam retest of the latest cost fixes. Details in [docs/LIVE_TEST.md](docs/LIVE_TEST.md).
 
 ![Snapshot stored with the live-test event](docs/images/live-test-alert.jpg)
 
 ## What it does
 
 You tell Hermes what to watch. Sentinel checks frames on your machine with a cheap change detector and asks a vision model about a frame only when something changed. When the answer is confirmed across several looks, it wakes the agent in the chat that created the rule.
+
+Illustrative conversation (the wording is typical, not a recording; the recorded run is in [docs/LIVE_TEST.md](docs/LIVE_TEST.md)):
 
 ```
 You:    watch my webcam and tell me if someone takes my coffee mug
@@ -26,7 +39,7 @@ You:    what happened at my desk today?
 Hermes: 3 events: 09:12 mug placed, 11:40 someone sat down, 14:03 mug taken [photos]
 ```
 
-It works from the classic CLI, from messaging platforms and from Hermes Desktop, which adds a Sentinel pane (see [Desktop pane](#desktop-pane)).
+It is built for the classic CLI, messaging platforms and Hermes Desktop (which adds a Sentinel pane, see [Desktop pane](#desktop-pane)). Only the classic CLI has been tested against real Hermes so far; in it the alert turn is stored but not rendered live, so Desktop or Telegram is the intended surface.
 
 ## Features
 
@@ -263,32 +276,7 @@ In a messaging chat you only see and control the rules created in that chat. Loc
 
 ## Configuration
 
-Set under `plugins.entries.hermes-sentinel.settings.<key>` in `config.yaml`. Invalid values fall back to the default and are listed by `/sentinel status`.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `default_source` | `camera:0` | Source used when a request names none. |
-| `vision_calls_per_hour` | `60` | Cap on vision checks per clock hour, across all rules. `0` pauses judging; `null`, `-1`, `unlimited`, `none` or `off` removes the cap. |
-| `vision_calls_per_day` | `500` | Cap per rolling 24 hours, across all rules. |
-| `confirm_k` | `2` | Positive verdicts needed out of the last `confirm_n`. Must not exceed `confirm_n`. |
-| `confirm_n` | `3` | Size of the confirmation window (1-20). |
-| `confidence_threshold` | `0.7` | Minimum judge confidence (0-1) for a verdict to count. |
-| `idle_check_seconds` | `300` | Re-check condition and absence rules this often without motion (trigger rules stretch it to at least 6 hours). Range 0 to 7 days; `0` disables the gate tick. |
-| `retention_days` | `7` | Delete events and snapshots older than this. Minimum 0.01. |
-| `max_storage_mb` | `500` | Snapshot storage cap; oldest photos are pruned first. Minimum 1. |
-| `stream_urls` | `{}` | Named streams, name to URL, with `${SECRET}` placeholders. At most 64 entries, names up to 64 characters, URLs up to 2048 characters. |
-| `alert_snapshots` | `true` | Attach the event photo (`MEDIA:`) to alerts. |
-| `motion_frames` | `3` | Frames (2-3) shown, in time order, to the model for rules about movement. `0` or `1` sends a single still. |
-| `batch_judging` | `true` | Judge rules that fire on the same camera frame in one vision call. |
-| `batch_max_rules` | `4` | Most rules per batched call (1-8). `1` turns batching off. |
-| `second_opinion` | `true` | Re-check a borderline positive verdict on a higher-resolution crop with a differently worded prompt. |
-| `second_opinion_band_low` / `second_opinion_band_high` | `0.5` / `0.8` | Confidence band that earns a second opinion. Verdicts at or above the high edge are trusted. |
-| `second_opinion_per_hour` | `6` | Cap on second opinions per rolling hour, across all rules (`0` turns them off). |
-| `rule_min_interval_seconds` | `10` | Safety net: least seconds between two judge calls of one rule (0-3600; `0` turns it off). The extra looks of a rule collecting its k-of-n confirmations are exempt. |
-| `latched_min_interval_seconds` | `60` | Safety net: least seconds between two judge calls of a latched rule (10-3600): one that fired, whose cooldown is over, and that waits for a clear verdict to re-arm. Those looks only detect that the scene cleared, so they are spaced wider than `rule_min_interval_seconds`. |
-| `rule_calls_per_hour` | `30` | Safety net: most judge calls one rule may make per rolling hour (1-1000), on top of the global budget. At the cap you get one notice, the rule keeps its state and judging resumes as the hour frees. |
-
-New rules copy `confirm_k`, `confirm_n` and `confidence_threshold` at creation; changing the settings later does not alter existing rules.
+Every setting has a safe default, and most people change none. Set them under `plugins.entries.hermes-sentinel.settings.<key>` in `config.yaml`. The ones you are most likely to touch: `vision_calls_per_hour` (default 60), `vision_calls_per_day` (500), `confirm_k` / `confirm_n` (2 of 3), `confidence_threshold` (0.7), `retention_days` (7), `max_storage_mb` (500). The full table (all 21 keys, ranges and meanings) is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); `/sentinel status` lists any invalid values.
 
 ## Cost control
 

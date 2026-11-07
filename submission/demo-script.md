@@ -6,6 +6,20 @@ One story: watch a mug, a hand takes it, the phone buzzes with a photo. Then the
 
 Record on Hermes Desktop or Telegram, not the classic CLI. In the live test (2026-11-07) the classic `hermes --cli` terminal did not render the injected alert turn live and sent the photo as a file path; the alert displays on surfaces that render gateway turns and native images. Desktop and Telegram have not been tested live yet, so rehearse on the chosen surface first. If a live webcam take is unreliable, use the `file:` video source (see the fallback section); the live test used it successfully. See `hermes-sentinel/docs/LIVE_TEST.md`.
 
+## Status of what the video will show (read first)
+
+- Verified on real Hermes: the whole alert path in the classic CLI with a `file:` video source (docs/LIVE_TEST.md).
+- NOT verified yet: the real Desktop app and its Sentinel pane, Telegram delivery with a photo, the live webcam on the current code. Rehearse each on the chosen surface at least twice before filming. Do not post a shot of any of them that you have not seen work.
+- Decision rule: if the Desktop pane does not load in the real app by 2026-11-09, cut the 0:52-1:07 segment and spend those 15 s on a second event (mug returned, then taken again) and the history question. The video must never show a stub-host render as the real app.
+
+## Pacing and on-screen text (what to cut)
+
+- Hook in the first 5 s: on-screen text "Tell Hermes what to watch. It tells you when it happens." Show the phone buzzing with the photo alert as a 2 s flash-forward, then rewind to the setup. Judges decide in the first 10 s.
+- Every segment gets one burned-in caption (the line in the table's Action column in quotes). Muted viewers must follow without audio.
+- Waiting is cut, never sped up: a hard cut with a small "7 s skipped" label. Keep the alert wait under 10 s in the final cut; a 6 to 10 s model latency is normal, so a single 5 to 8 s cut is enough.
+- Slow alert on the day (over 15 s): do not extend the video. Film more takes, or switch to the `file:` loop (below) with the caption "recorded clip, looped" and keep the Telegram or Desktop alert real.
+- Keep the Desktop shot to 10 s of actual movement (hover a tile, click pause, click false alarm). Static screens read as padding.
+
 ## Setup checklist (do the day before, rehearse twice)
 
 **Separate Hermes home.** Record in a throwaway profile, not your real `~/.hermes`.
