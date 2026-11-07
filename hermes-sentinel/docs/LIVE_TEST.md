@@ -160,7 +160,16 @@ Date: 2026-11-07. A looping generated video of a figure that moves nonstop and r
 - 0 judge calls during the 30 s cooldown.
 - After the cooldown the rule stayed latched in `firing` and was judged every ~10 s (the per-rule minimum interval) from 18:37:25 until it was paused at 18:40:14: 24 calls in 4.5 minutes, about 6k tokens each, up to 30 calls per hour per rule. Each of those calls only served to detect that the scene had cleared.
 - Fix: the latched backoff (`latched_min_interval_seconds`, default 60 s) spaces judge calls of a latched rule at least 60 s apart. It is covered by the simulated 30-minute continuous-motion tests, not yet by a new live run.
-- The real-webcam hand-raise retest with the fixed code is still pending.
+- The real-webcam hand-raise retest with the fixed code is still pending (see the next section).
+
+## Webcam hand-raise retests and a replay of the captured frames
+
+Date: 2026-11-07. Rule: "a person raises their hand above shoulder level" on `camera:0`, real Hermes, real vision model, 2-of-3 confirmation, 10 s minimum interval.
+
+- Live runs 1, 2 and 4 produced no alert. Run 1 was framed too close for a raised hand to be visible. Runs 2 and 4 were 34 to 80 seconds long, so a short raise gave only one or two judge checks, too few for 2-of-3 confirmation.
+- Run 3 ran while another program held the webcam. Sentinel logged `cannot open camera`, retried with backoff (1, 2, 4, 8, 16, 32, 60 s), made 0 vision calls and spent nothing, as designed.
+- Replay: the frames saved during run 3 (hand raised for about 16 s, head and shoulders in frame) were turned into a looping video and used as a `file:` source. The rule fired once at 0.99 confidence ("The person holds one hand raised above their head.") after 3 vision calls.
+- Conclusion: detection of a clearly visible raised hand works. A brief gesture is not enough for a rule that confirms 2 of 3 checks 10 s apart, so hold the pose for 20 to 30 seconds, or use `confirm_k: 1` for gestures. A single live webcam alert on the fixed code is still to be captured.
 
 ## Not yet tested
 
