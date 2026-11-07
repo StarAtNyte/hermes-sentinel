@@ -99,7 +99,7 @@ class Harness:
             judge=self.judge,
             alerter=self.alerter,
             budget=self.budget,
-            config=config or config_mod.SentinelConfig(),
+            config=config or config_mod.SentinelConfig(batch_judging=False),
             settings=settings
             or engine_mod.EngineSettings(
                 confirm_interval=1.0,

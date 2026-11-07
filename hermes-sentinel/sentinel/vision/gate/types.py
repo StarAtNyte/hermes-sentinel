@@ -25,6 +25,8 @@ class GateResult:
         reason: short machine-readable cause: ``"change"``, ``"quiet"``, ``"warmup"``,
             ``"global_change"`` or ``"resized"``.
         score_threshold: the per-pixel score threshold used (for diagnostics).
+        drift: the change was found by the slow reference (gradual change); ``changed`` is
+            also True and ``reason`` is ``"drift"``.
     """
 
     changed: bool
@@ -34,6 +36,7 @@ class GateResult:
     rebaselined: bool = False
     reason: str = "quiet"
     score_threshold: float = 0.0
+    drift: bool = False
 
     @property
     def should_judge(self) -> bool:
@@ -64,6 +67,17 @@ class GateState:
     last_tick: float | None = None
     noise_ref: np.ndarray | None = None  # running per-brightness-bin noise level
     since_baseline: int = 0  # frames blended into the background since the last baseline
+    slow_ref: Reference | None = None  # last judged / keyframe frame, for drift detection
+    slow_ts: float | None = None  # when slow_ref was taken
+    drift_checked: float | None = None  # time of the last drift comparison
+    drift_streak: int = 0  # consecutive drift comparisons that saw a change
+    drift_bbox: BBox | None = None  # processed-pixel box of the previous drift comparison
     stats: dict[str, int] = field(
-        default_factory=lambda: {"frames": 0, "changed": 0, "ticks": 0, "rebaselines": 0}
+        default_factory=lambda: {
+            "frames": 0,
+            "changed": 0,
+            "ticks": 0,
+            "rebaselines": 0,
+            "drifts": 0,
+        }
     )

@@ -435,13 +435,14 @@ def test_feedback_correct_and_false_alarm(client, rig):
     before = rig.sentinel.store.get_rule(rule).confidence_threshold
     ok = client.post(f"{BASE}/events/{ev.id}/feedback", json={"verdict": "correct"}).json()
     assert ok["ok"] is True and ok["event"]["feedback"] == "correct"
-    assert ok["threshold"] == pytest.approx(before)
+    lowered = before - 0.01  # a confirmed alert nudges the threshold down a little
+    assert ok["threshold"] == pytest.approx(lowered)
     bad = client.post(f"{BASE}/events/{ev.id}/feedback", json={"verdict": "false_alarm"}).json()
     assert bad["event"]["feedback"] == "false_alarm"
-    assert bad["threshold"] == pytest.approx(before + 0.05)
-    assert rig.sentinel.store.get_rule(rule).confidence_threshold == pytest.approx(before + 0.05)
+    assert bad["threshold"] == pytest.approx(lowered + 0.05)
+    assert rig.sentinel.store.get_rule(rule).confidence_threshold == pytest.approx(lowered + 0.05)
     again = client.post(f"{BASE}/events/{ev.id}/feedback", json={"verdict": "false_alarm"}).json()
-    assert again["threshold"] == pytest.approx(before + 0.05)  # idempotent
+    assert again["threshold"] == pytest.approx(lowered + 0.05)  # idempotent
 
 
 @pytest.mark.parametrize("payload", [{}, {"verdict": "maybe"}, {"verdict": 1}, [], "x"])

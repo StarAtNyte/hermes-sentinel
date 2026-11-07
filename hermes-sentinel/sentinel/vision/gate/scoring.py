@@ -111,6 +111,9 @@ class FrameScorer:
         st.prev = cur
         st.background = img.copy()
         st.background_ref = cur
+        st.slow_ref = cur
+        st.slow_ts = None
+        st.drift_streak = 0
 
     def update_background(
         self, st: GateState, img: np.ndarray, cur: Reference, cfg: GateConfig

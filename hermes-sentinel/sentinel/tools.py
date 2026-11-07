@@ -24,8 +24,11 @@ from typing import Any
 from .alerts import (
     GATEWAY_INJECTION_YAML,
     capture_origin,
+    format_delivery_test,
     is_chat_origin,
-    same_chat,
+    route_hint,
+    run_delivery_test,
+    visible_to,
 )
 from .config import SentinelConfig
 from .rules import (
@@ -39,6 +42,8 @@ from .rules import (
     build_rule,
     compile_rule,
     get_recipe,
+    lowered_threshold,
+    raised_threshold,
     recipe_names,
 )
 from .runtime import Sentinel
@@ -60,8 +65,6 @@ EXAMPLE_MAX_SIDE = 768
 EXAMPLE_JPEG_QUALITY = 80
 #: Plain-English rule compiling costs an LLM call outside the vision budget: small own cap.
 COMPILE_CALLS_PER_HOUR = 10
-FALSE_ALARM_STEP = 0.05
-MAX_TUNED_THRESHOLD = 0.95
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".bmp", ".webp"})
 _REL_RE = re.compile(
     r"^\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|"
@@ -166,6 +169,12 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                 "description": "Quiet time after an alert (default 300).",
             },
             "schedule": _SCHEDULE_PROP,
+            "motion": {
+                "type": "boolean",
+                "description": "True when the question is about movement over time (someone "
+                "walking toward the door, a level rising): the vision model then sees a short "
+                "ordered sequence of recent frames. Auto-detected when omitted.",
+            },
             "action_prompt": {
                 "type": "string",
                 "description": "Optional instruction for you (the agent) to carry "
@@ -176,7 +185,8 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "sentinel_rules": _schema(
         "sentinel_rules",
         "List watch rules with their status (watching, paused, source offline), last event and "
-        "vision checks used.",
+        "vision checks used. A 'hint' on a rule means its alerts do not know this chat yet "
+        "(tell the user to send /sentinel here).",
         {"rule_id": {"type": "string", "description": "Show only this rule."}},
     ),
     "sentinel_update": _schema(
@@ -201,6 +211,7 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                         "description": "Empty string = just notify.",
                     },
                     "schedule": {**_SCHEDULE_PROP, "type": ["object", "null"]},
+                    "motion": {"type": "boolean"},
                 },
                 "additionalProperties": False,
             },
@@ -276,7 +287,14 @@ SCHEMAS["sentinel_setup_check"] = _schema(
     "default source, storage, alert delivery permission, vision model, caps and rules. Returns "
     "an ordered list of checks (ok / warn / fail, with the exact fix) and a ready flag. Use it "
     "when the user is setting up, or when watching or alerts do not work.",
-    {},
+    {
+        "test_delivery": {
+            "type": "boolean",
+            "description": "Also send one small test message to this chat and report whether "
+            "Hermes accepted it (starts one agent turn; only when the user asks to test "
+            "alert delivery).",
+        }
+    },
 )
 TOOL_NAMES: tuple[str, ...] = tuple(SCHEMAS)
 EMOJI = {
@@ -353,6 +371,13 @@ def _num_arg(args: Mapping[str, Any], key: str) -> float | None:
     if not math.isfinite(number) or number < 0:
         raise ToolError(f"'{key}' must be a non-negative number")
     return number
+
+
+def _bool_arg(args: Mapping[str, Any], key: str) -> bool:
+    value = args.get(key)
+    if not isinstance(value, bool):
+        raise ToolError(f"'{key}' must be true or false")
+    return value
 
 
 def _local(ts: str) -> str:
@@ -460,6 +485,7 @@ def _rule_brief(spec: RuleSpec) -> dict[str, Any]:
         "confidence_threshold": round(spec.confidence_threshold, 3),
         "enabled": spec.enabled,
         "recipe": spec.recipe,
+        "motion": spec.motion,
         "compiled_by": spec.compiled_by,
     }
 
@@ -545,6 +571,7 @@ class SentinelTools:
                 args = {}
             if not isinstance(args, Mapping):
                 return _err("arguments must be a JSON object")
+            self.s.prime_secrets()
             try:
                 return fn(dict(args), **kwargs)
             except ToolError as exc:
@@ -583,7 +610,11 @@ class SentinelTools:
 
     def _rule(self, rule_id: str, caller: Mapping[str, Any] | None = None) -> RuleSpec:
         spec = self.s.store.get_rule(rule_id)
-        if spec is not None and caller is not None and not same_chat(spec.origin, caller):
+        if (
+            spec is not None
+            and caller is not None
+            and not visible_to(spec.origin, caller, self.s.routes)
+        ):
             spec = None  # another chat's rule: invisible, not "forbidden"
         if spec is None:
             raise ToolError(f"no rule with id {rule_id!r}; use sentinel_rules to list rules")
@@ -612,9 +643,17 @@ class SentinelTools:
         )
 
     def sentinel_setup_check(self, args: dict, **kwargs: Any) -> str:
+        test = None
+        if args.get("test_delivery") is True:
+            test = run_delivery_test(self.s.alerter, self._caller(kwargs))
         checks = run_checks(SetupEnv.from_sentinel(self.s, kwargs))
+        extra: dict[str, Any] = {}
+        report = format_report(checks)
+        if test is not None:
+            extra["delivery_test"] = {"delivered": test.delivered, "via": test.via}
+            report += "\n" + format_delivery_test(test)
         return _ok(
-            checks=[c.to_dict() for c in checks], report=format_report(checks), **summarize(checks)
+            checks=[c.to_dict() for c in checks], report=report, **summarize(checks), **extra
         )
 
     def _setup_hint(self) -> str:
@@ -690,6 +729,8 @@ class SentinelTools:
             changes["cooldown_seconds"] = cooldown
         if args.get("schedule") is not None:
             changes["schedule"] = _parse_schedule(args.get("schedule"))
+        if args.get("motion") is not None:
+            changes["motion"] = _bool_arg(args, "motion")
         if changes:
             spec = spec.with_changes(**changes)
         saved = self._save_and_apply(spec)
@@ -747,12 +788,15 @@ class SentinelTools:
         specs = (
             [self._rule(rule_id, caller)]
             if rule_id
-            else [r for r in store.list_rules() if same_chat(r.origin, caller)]
+            else [r for r in store.list_rules() if visible_to(r.origin, caller, self.s.routes)]
         )
         engine = self.s.engine_if_built
         out = []
         for spec in specs:
             entry = _rule_brief(spec)
+            hint = route_hint(spec.origin, caller)
+            if hint:
+                entry["hint"] = hint
             status = engine.rule_status(spec.id) if engine is not None else None
             entry["status"] = self.status_text(spec, engine, status)
             if status:
@@ -807,6 +851,7 @@ class SentinelTools:
             "source",
             "action_prompt",
             "schedule",
+            "motion",
         }
         unknown = sorted(set(raw) - allowed)
         if unknown:
@@ -832,6 +877,8 @@ class SentinelTools:
             changes["action"] = ACTION_AGENT if prompt else ACTION_NOTIFY
         if "schedule" in raw:
             changes["schedule"] = _parse_schedule(raw.get("schedule"))
+        if "motion" in raw:
+            changes["motion"] = _bool_arg(raw, "motion")
         saved = self._save_and_apply(spec.with_changes(**changes))
         return _ok(rule=_rule_brief(saved), message=f"Updated rule {rule_id}.")
 
@@ -882,7 +929,7 @@ class SentinelTools:
             events = [
                 e
                 for e in events
-                if e.rule_id in rules and same_chat(rules[e.rule_id].origin, caller)
+                if e.rule_id in rules and visible_to(rules[e.rule_id].origin, caller, self.s.routes)
             ]
         items = [_event_dict(e, rules.get(e.rule_id)) for e in events]
         summary = "; ".join(f"{i['time'][11:16]} {i['caption']}" for i in items[:10])
@@ -903,7 +950,7 @@ class SentinelTools:
         caller = self._caller(kwargs)
         if is_chat_origin(caller):
             owner = store.get_rule(event.rule_id)
-            if owner is None or not same_chat(owner.origin, caller):
+            if owner is None or not visible_to(owner.origin, caller, self.s.routes):
                 raise ToolError(f"no event #{event_id}; use sentinel_events to find it")
         if event.feedback == verdict:  # idempotent: no second example, no second nudge
             current = store.get_rule(event.rule_id)
@@ -929,11 +976,7 @@ class SentinelTools:
             except (StoreError, ValueError, OSError) as exc:
                 result["example_error"] = str(exc)[:200]
         if verdict == "false_alarm":
-            new_threshold = min(
-                MAX_TUNED_THRESHOLD, round(spec.confidence_threshold + FALSE_ALARM_STEP, 3)
-            )
-            if new_threshold > spec.confidence_threshold:
-                spec = self._save_and_apply(spec.with_changes(confidence_threshold=new_threshold))
+            spec = self._retune(spec, raised_threshold(spec.confidence_threshold))
             result["confidence_threshold"] = spec.confidence_threshold
             message = (
                 f"Marked event #{event.id} as a false alarm. Saved it as a 'no' example "
@@ -941,8 +984,22 @@ class SentinelTools:
                 f"{spec.confidence_threshold:.2f}."
             )
         else:
+            before = spec.confidence_threshold
+            spec = self._retune(spec, lowered_threshold(before))
+            result["confidence_threshold"] = spec.confidence_threshold
             message = f"Marked event #{event.id} as correct and saved it as a 'yes' example."
+            if spec.confidence_threshold < before:
+                message += (
+                    f" Nudged the rule's confidence threshold down to "
+                    f"{spec.confidence_threshold:.2f}."
+                )
         return _ok(**result, rule_id=spec.id, message=message)
+
+    def _retune(self, spec: RuleSpec, threshold: float) -> RuleSpec:
+        """Save ``spec`` with a new confidence threshold when it differs."""
+        if threshold == spec.confidence_threshold:
+            return spec
+        return self._save_and_apply(spec.with_changes(confidence_threshold=threshold))
 
     def _example_from_event(self, rule_id: str, kind: str, event: EventRecord, note: str) -> Any:
         """Add an event's photo as an example, shrunk to the example size when possible."""
@@ -985,7 +1042,8 @@ class SentinelTools:
             caller = self._caller(kwargs)
             owner = store.get_rule(event.rule_id) if event is not None else None
             if event is None or (
-                is_chat_origin(caller) and (owner is None or not same_chat(owner.origin, caller))
+                is_chat_origin(caller)
+                and (owner is None or not visible_to(owner.origin, caller, self.s.routes))
             ):
                 raise ToolError(f"no event #{event_id}")
             example = self._example_from_event(spec.id, kind, event, note)

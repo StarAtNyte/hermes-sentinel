@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import Literal
 
-SourceKind = Literal["camera", "stream", "snapshot", "screen", "folder"]
-SOURCE_KINDS: tuple[str, ...] = ("camera", "stream", "snapshot", "screen", "folder")
+SourceKind = Literal["camera", "stream", "snapshot", "screen", "folder", "file"]
+SOURCE_KINDS: tuple[str, ...] = ("camera", "stream", "snapshot", "screen", "folder", "file")
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 )
+VIDEO_EXTENSIONS: frozenset[str] = frozenset({".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v"})
+MAX_FRAME_STEP = 1000
+STREAM_URL_SLOTS: tuple[str, ...] = tuple(f"SENTINEL_STREAM_URL_{n}" for n in range(1, 5))
 STREAM_PATH_HINTS = (".mjpg", ".mjpeg", ".m3u8", ".mp4", ".mkv", ".webm", ".flv", ".ts")
 STREAM_SCHEMES = frozenset({"rtsp", "rtsps", "rtmp", "rtmps", "http", "https", "udp", "tcp"})
 HTTP_SCHEMES = frozenset({"http", "https"})

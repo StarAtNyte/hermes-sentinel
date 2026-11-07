@@ -88,9 +88,11 @@ def validate_confirmation(spec: RuleSpec) -> None:
 
 
 def validate_metadata(spec: RuleSpec) -> None:
-    """Check ``enabled``, ``recipe``, ``compiled_by``, ``origin`` and the timestamps."""
+    """Check ``enabled``, ``motion``, ``recipe``, ``compiled_by``, ``origin`` and the timestamps."""
     if not isinstance(spec.enabled, bool):
         raise RuleValidationError("enabled must be a boolean")
+    if not isinstance(spec.motion, bool):
+        raise RuleValidationError("motion must be a boolean")
     if spec.recipe is not None and (not isinstance(spec.recipe, str) or not spec.recipe):
         raise RuleValidationError("recipe must be a non-empty string or null")
     if spec.compiled_by not in COMPILED_BY_VALUES:

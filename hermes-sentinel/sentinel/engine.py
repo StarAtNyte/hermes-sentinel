@@ -20,8 +20,17 @@ Data flow per source::
 * **Bounded queue**: at most one queued job per rule (a newer frame replaces the queued one)
   and ``queue_size`` jobs overall; when full the oldest job is dropped. A rule is never
   judged by two workers at once, so verdicts reach its state machine in order.
-* **Budget**: every vision call is reserved through :class:`budget.Budget`. When refused the
-  job is skipped and the budget's single exhaustion notice is posted.
+* **Batching**: when several rules on one source were queued from the very same frame, one
+  worker takes up to ``batch_max_rules`` of them and judges them in a single multi-question
+  call (:class:`judging.JudgingPipeline`); rules with teaching examples or a motion question
+  are judged alone, and rules the batch did not answer fall back to their own calls. Per-rule
+  state machines, cooldowns and events are untouched.
+* **Motion**: a rule with ``motion`` set is judged on its gate's recent frames in order
+  (one call). **Second opinion**: a borderline positive verdict that would start or confirm an
+  alert is re-checked once on a crop of the changed region (:class:`judging.SecondOpinion`).
+* **Budget**: every vision call (single, batch, fallback, second opinion) is reserved
+  through :class:`budget.Budget`. When refused the job is skipped and the budget's single
+  exhaustion notice is posted.
 * **Judge failures** (no network, refused task, bad reply) back the rule off (5 s doubling to
   300 s) and post one notice per failure episode; the gate keeps running.
 * **Scheduler** (once a second): polls state machines (cooldown end, staleness), runs the
@@ -31,11 +40,14 @@ Data flow per source::
   same profile from opening the same camera twice. A process that loses keeps retrying in a
   standby thread and takes over when the owner exits.
 
-* **Multiplexing limit**: a capture thread runs in a copy of the context of the call that
-  started it (a tool or command call), so contextvars such as Hermes' secret scope are
-  visible to ``${SECRET}`` placeholders. Rules loaded at boot, or picked up by the periodic
-  store sync, have no such scope: a camera that needs a secret stays offline there until a
-  tool call creates or resumes its rule.
+* **Secret scope**: a capture thread runs in a copy of the context of the call that started
+  it, and every tool or command call primes an in-memory secret cache
+  (:meth:`runtime.Sentinel.prime_secrets`). A camera whose ``${SECRET}`` cannot be read on a
+  scope-less thread (boot or scheduler, multiplexing gateway) reports "waiting for secret
+  scope" and re-checks every few seconds instead of going offline; single-profile Hermes
+  reads secrets on any thread and never waits.
+* **Finite sources**: a video file that reaches its end stops the worker with one notice
+  instead of reconnecting and replaying it.
 
 Every thread is a daemon and :meth:`Engine.stop` joins them all. ``threaded=False`` builds an
 engine that never starts threads; tests drive it with :meth:`step_source`,
@@ -61,8 +73,24 @@ from typing import Any
 from .alerts import Alerter
 from .budget import Budget
 from .config import SentinelConfig
+from .judging import (
+    HourlyCap,
+    JudgeItem,
+    JudgingPipeline,
+    JudgingPolicy,
+    SecondOpinion,
+    motion_sequence,
+)
 from .rules import RuleSpec, RuleState, RuleStateMachine
-from .sources import SourceError, SourceNotReady, SourceSpec, open_source, redact_url
+from .sources import (
+    SecretScopeUnavailable,
+    SourceError,
+    SourceExhausted,
+    SourceNotReady,
+    SourceSpec,
+    open_source,
+    redact_url,
+)
 from .vision import Example, Judge, Verdict, encode_jpeg
 
 logger = logging.getLogger(__name__)
@@ -126,6 +154,10 @@ def default_source_key(spec: str, named_streams: dict[str, str] | None = None) -
         return SourceSpec.parse(spec, named_streams=named_streams).canonical()
     except Exception:  # noqa: BLE001
         return str(spec).strip()
+
+
+FINISHED_RETRY_S = 10 * 365 * 86400.0  # effectively never (finite, so status stays JSON-safe)
+SECRET_SCOPE_RETRY_S = 5.0  # how often a camera waiting for the secret scope re-checks
 
 
 def _short_error(exc: BaseException | str) -> str:
@@ -207,6 +239,17 @@ class _Job:
     ts: float
     frame: Any
     reason: str
+    bbox: tuple[int, int, int, int] | None = None  # gate's changed region, input-frame pixels
+    sequence: tuple[Any, ...] = ()  # motion rules: earlier frames plus this one, oldest first
+
+
+@dataclass(eq=False)
+class _Prepared:
+    """A dequeued job that passed the pre-judge checks, with its rule and judge input."""
+
+    job: _Job
+    rt: _RuleRuntime
+    item: JudgeItem
 
 
 @dataclass(eq=False)
@@ -311,6 +354,16 @@ class Engine:
         self._fired = 0
         self._examples: OrderedDict[tuple[str, float], bytes] = OrderedDict()
         self._examples_lock = threading.Lock()
+        self._policy = JudgingPolicy.from_config(config)
+        stopped = self._stop.is_set
+        self._pipeline = JudgingPipeline(judge, self._policy, self._reserve_budget, stopped)
+        self._second_opinion = SecondOpinion(
+            judge,
+            self._policy,
+            HourlyCap(self._policy.second_opinion_per_hour, clock=clock),
+            self._reserve_budget,
+            stopped,
+        )
         self.last_error = ""
         self.started_at: float | None = None  # wall clock of the last successful start
 
@@ -672,6 +725,9 @@ class Engine:
                 _ts, frame = source.read()
             except SourceNotReady:
                 return "not_ready"
+            except SourceExhausted as exc:
+                notice = self._source_finished(worker, source, exc)
+                outcome = "finished"
             except Exception as exc:  # noqa: BLE001
                 with suppress(Exception):
                     source.close()
@@ -708,11 +764,26 @@ class Engine:
                     out.append(origin)
         return out
 
+    def _source_finished(self, worker: _SourceWorker, source: Any, exc: BaseException) -> str:
+        """A finite source (a video file) ran out: stop retrying it and say so once."""
+        with suppress(Exception):
+            source.close()
+        with worker.lock:
+            worker.is_open = False
+        worker.online = False
+        worker.last_error = _short_error(exc)
+        worker.next_attempt = self._clock() + FINISHED_RETRY_S  # do not replay a finished file
+        return f"Source {worker.key} finished: {worker.last_error}. Watching it has stopped."
+
     def _source_failed(self, worker: _SourceWorker, exc: BaseException, now: float) -> str | None:
         """Record a failure and schedule the retry; returns the offline notice, once."""
         worker.failures += 1
         worker.last_error = _short_error(exc)
         worker.online = False
+        if isinstance(exc, SecretScopeUnavailable):
+            # Not an outage: a tool or command call will prime the secret cache. Poll quickly.
+            worker.next_attempt = now + SECRET_SCOPE_RETRY_S
+            return None
         if worker.offline_since is None:
             worker.offline_since = now
         delay = min(
@@ -761,6 +832,7 @@ class Engine:
         return max(self.settings.confirm_interval, hold / steps if hold > 0 else 0.0)
 
     def _process_frame(self, rule_ids: list[str], now: float, frame: Any) -> None:
+        staged: list[tuple[_RuleRuntime, _Job]] = []
         for rule_id in rule_ids:
             with self._lock:
                 rt = self._rules.get(rule_id)
@@ -779,34 +851,66 @@ class Engine:
                 logger.warning("sentinel: gate failed for rule %s: %s", rule_id, exc)
                 self.last_error = _short_error(exc)
                 continue
-            reason = ""
-            if getattr(result, "changed", False):
-                reason = "change"
-            elif getattr(result, "tick", False):
-                reason = "tick"
-            elif rt.machine.state is RuleState.CANDIDATE and now >= rt.next_confirm_at:
-                reason = "confirm"
-            if reason and now >= rt.judge_backoff_until:
-                self._enqueue(rt, now, frame, reason)
+            job = self._job_for(rt, result, now, frame)
+            if job is not None:
+                staged.append((rt, job))
+        self._enqueue_all(staged)
 
-    def _enqueue(self, rt: _RuleRuntime, now: float, frame: Any, reason: str) -> None:
+    def _job_for(self, rt: _RuleRuntime, result: Any, now: float, frame: Any) -> _Job | None:
+        """The judge job a gate result calls for, or ``None`` (quiet, or backing off)."""
+        reason = ""
+        if getattr(result, "changed", False):
+            reason = "change"
+        elif getattr(result, "tick", False):
+            reason = "tick"
+        elif rt.machine.state is RuleState.CANDIDATE and now >= rt.next_confirm_at:
+            reason = "confirm"
+        if not reason or now < rt.judge_backoff_until:
+            return None
+        job = _Job(rt.spec.id, now, frame, reason, bbox=getattr(result, "bbox", None))
+        job.sequence = self._motion_sequence(rt, frame, now)
+        return job
+
+    def _motion_sequence(self, rt: _RuleRuntime, frame: Any, now: float) -> tuple[Any, ...]:
+        """The ordered frames a motion rule is judged on (empty: judge a single still)."""
+        if not rt.spec.motion or self._policy.motion_frames < 2:
+            return ()
+        recent = getattr(rt.gate, "recent_frames", None)
+        if recent is None:
+            return ()
+        try:
+            return motion_sequence(recent(), frame, now, self._policy.motion_frames)
+        except (AttributeError, TypeError, ValueError) as exc:
+            logger.warning("sentinel: no recent frames for rule %s: %s", rt.spec.id, exc)
+            return ()
+
+    def _enqueue_all(self, staged: list[tuple[_RuleRuntime, _Job]]) -> None:
+        """Queue one frame's jobs together so a worker sees them all and can batch them."""
+        if not staged:
+            return
         with self._qcond:
-            if rt.queued is not None:  # newest frame wins; keep the strongest reason
-                rt.queued.ts, rt.queued.frame = now, frame
-                if reason == "change":
-                    rt.queued.reason = reason
-                return
-            if len(self._queue) >= int(self.settings.queue_size):
-                old = self._queue.popleft()
-                old_rt = self._rules.get(old.rule_id)
-                if old_rt is not None and old_rt.queued is old:
-                    old_rt.queued = None
-                    old_rt.dropped += 1
-                self._dropped += 1
-            job = _Job(rule_id=rt.spec.id, ts=now, frame=frame, reason=reason)
-            self._queue.append(job)
-            rt.queued = job
-            self._qcond.notify()
+            for rt, job in staged:
+                self._enqueue_locked(rt, job)
+            self._qcond.notify_all()
+
+    def _enqueue_locked(self, rt: _RuleRuntime, job: _Job) -> None:
+        """Queue ``job`` for ``rt`` (``_qcond`` held): at most one queued job per rule."""
+        queued = rt.queued
+        if queued is not None:  # newest frame wins; keep the strongest reason
+            queued.ts, queued.frame = job.ts, job.frame
+            queued.bbox, queued.sequence = job.bbox, job.sequence
+            if job.reason == "change":
+                queued.reason = job.reason
+            return
+        if len(self._queue) >= int(self.settings.queue_size):
+            old = self._queue.popleft()
+            old_rt = self._rules.get(old.rule_id)
+            if old_rt is not None and old_rt.queued is old:
+                old_rt.queued = None
+                old_rt.dropped += 1
+            self._dropped += 1
+        self._queue.append(job)
+        rt.queued = job
 
     # ---- judging ----------------------------------------------------------------------
 
@@ -826,40 +930,74 @@ class Engine:
             return job
         return None
 
+    def _take_group_locked(self) -> list[_Job]:
+        """Pop the next job plus queued peers that can share its model call (``_qcond`` held).
+
+        Peers are other idle rules on the same source whose job holds the very same frame
+        (so they were queued by one capture), up to the policy's batch cap. Motion rules judge
+        a sequence rather than the shared still, so they never join or lead a batch.
+        """
+        first = self._take_job_locked()
+        if first is None:
+            return []
+        group = [first]
+        lead = self._rules.get(first.rule_id)
+        cap = self._policy.batch_cap
+        if cap <= 1 or lead is None or lead.spec.motion:
+            return group
+        for job in list(self._queue):
+            if len(group) >= cap:
+                break
+            rt = self._rules.get(job.rule_id)
+            if rt is None or rt.in_flight or rt.spec.motion or job.frame is not first.frame:
+                continue
+            if rt.source_key != lead.source_key:
+                continue
+            self._queue.remove(job)
+            rt.queued = None
+            rt.in_flight = True
+            group.append(job)
+        return group
+
     def _judge_loop(self) -> None:
         while not self._stop.is_set():
             with self._qcond:
-                job = self._take_job_locked()
-                while job is None and not self._stop.is_set():
+                group = self._take_group_locked()
+                while not group and not self._stop.is_set():
                     self._qcond.wait(0.5)
-                    job = self._take_job_locked()
-            if job is None:
+                    group = self._take_group_locked()
+            if not group:
                 return
-            self._run_job_safely(job)
+            self._run_group_safely(group)
 
-    def _run_job_safely(self, job: _Job) -> None:
+    def _run_group_safely(self, group: list[_Job]) -> None:
         try:
-            self._run_job(job)
+            self._run_group(group)
         except Exception as exc:  # noqa: BLE001 - a worker must never die
-            logger.exception("sentinel: judge job failed for rule %s", job.rule_id)
+            logger.exception("sentinel: judge job failed for rules %s", [j.rule_id for j in group])
             self.last_error = _short_error(exc)
         finally:
-            with self._qcond:
+            self._release_group(group)
+
+    def _release_group(self, group: list[_Job]) -> None:
+        """Mark every rule of a finished group idle again and wake the workers."""
+        with self._qcond:
+            for job in group:
                 rt = self._rules.get(job.rule_id)
                 if rt is not None:
                     rt.in_flight = False
-                self._qcond.notify_all()
+            self._qcond.notify_all()
 
     def run_pending_judgements(self, max_jobs: int = 1000) -> int:
         """Run queued judge jobs on the calling thread (synchronous mode). Returns the count."""
         done = 0
         while done < max_jobs:
             with self._qcond:
-                job = self._take_job_locked()
-            if job is None:
+                group = self._take_group_locked()
+            if not group:
                 break
-            self._run_job_safely(job)
-            done += 1
+            self._run_group_safely(group)
+            done += len(group)
         return done
 
     def queue_length(self) -> int:
@@ -925,30 +1063,48 @@ class Engine:
                 self.alerter.notice(notice, origin=spec.origin)
         return allowed
 
-    def _run_job(self, job: _Job) -> None:
+    def _prepare(self, job: _Job) -> _Prepared | None:
+        """The judge input for ``job``, or ``None`` when the rule should not be judged now."""
         with self._lock:
             rt = self._rules.get(job.rule_id)
         if rt is None or not rt.spec.enabled:
-            return
+            return None
         spec = rt.spec
         if not self._schedule_active(spec):
-            return
+            return None
         if rt.machine.state is RuleState.COOLDOWN:
-            return  # queued before the rule fired; the verdict could not count
+            return None  # queued before the rule fired; the verdict could not count
         if self._stop.is_set():
-            return
-        if not self._reserve_budget(spec):
-            rt.budget_skips += 1
-            return
-        verdict = self.judge.judge(
-            job.frame,
-            spec.question,
-            rule_id=spec.id,
-            roi=spec.roi,
-            examples=self._load_examples(spec.id),
+            return None
+        item = JudgeItem(
+            spec=spec,
+            frame=job.frame,
+            examples=tuple(self._load_examples(spec.id)),
+            sequence=job.sequence,
+            bbox=job.bbox,
         )
+        return _Prepared(job, rt, item)
+
+    def _run_group(self, group: list[_Job]) -> None:
+        """Judge the jobs of one group (usually one) and feed each verdict to its rule."""
+        prepared = [p for p in (self._prepare(job) for job in group) if p is not None]
+        if not prepared:
+            return
+        outcomes = self._pipeline.run([p.item for p in prepared])
+        for entry, outcome in zip(prepared, outcomes, strict=True):
+            if self._stop.is_set():
+                return  # unloaded while the model was thinking: no store writes, no alerts
+            if outcome.budget_refused:
+                entry.rt.budget_skips += 1
+            elif outcome.verdict is not None:
+                self._apply_verdict(entry.rt, entry.job, outcome.verdict)
+
+    def _apply_verdict(self, rt: _RuleRuntime, job: _Job, verdict: Verdict) -> None:
+        """Run the optional second opinion, record the verdict and advance the rule."""
+        spec = rt.spec
+        verdict = self._second_opinion.review(spec, rt.machine.state, job.frame, job.bbox, verdict)
         if self._stop.is_set():
-            return  # unloaded while the model was thinking: no store writes, no alerts
+            return
         now = self._clock()
         rt.checks += 1
         rt.last_verdict = verdict

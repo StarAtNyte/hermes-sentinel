@@ -10,7 +10,7 @@ from typing import Any
 from .schema import MAX_CAPTION_LEN, MAX_ERROR_LEN, MAX_REASON_LEN
 from .types import Verdict
 
-__all__ = ["clean", "error_text", "extract_object", "parse_verdict"]
+__all__ = ["clean", "error_text", "extract_object", "parse_verdict", "verdict_from_object"]
 
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -81,14 +81,8 @@ def extract_object(result: Any) -> dict[str, Any] | None:
     return obj if isinstance(obj, dict) else None
 
 
-def parse_verdict(result: Any, *, elapsed: float = 0.0) -> Verdict:
-    """Turn a host result into a :class:`Verdict` (never raises)."""
-    model = clean(getattr(result, "model", ""), 120)
-    obj = extract_object(result)
-    if obj is None:
-        return Verdict(
-            None, error="model reply was not a JSON object", elapsed=elapsed, model=model
-        )
+def verdict_from_object(obj: dict[str, Any], *, elapsed: float = 0.0, model: str = "") -> Verdict:
+    """A :class:`Verdict` from one already-parsed JSON object (never raises)."""
     match = parse_bool(obj.get("match", obj.get("answer")))
     if match is None:
         return Verdict(
@@ -107,6 +101,17 @@ def parse_verdict(result: Any, *, elapsed: float = 0.0) -> Verdict:
         elapsed=elapsed,
         model=model,
     )
+
+
+def parse_verdict(result: Any, *, elapsed: float = 0.0) -> Verdict:
+    """Turn a host result into a :class:`Verdict` (never raises)."""
+    model = clean(getattr(result, "model", ""), 120)
+    obj = extract_object(result)
+    if obj is None:
+        return Verdict(
+            None, error="model reply was not a JSON object", elapsed=elapsed, model=model
+        )
+    return verdict_from_object(obj, elapsed=elapsed, model=model)
 
 
 def error_text(exc: BaseException) -> str:

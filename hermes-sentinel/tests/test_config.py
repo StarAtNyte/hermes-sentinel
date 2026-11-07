@@ -17,11 +17,19 @@ def load(values):
 def test_config_keys_match_manifest_schema():
     manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text())
     schema = manifest["config_schema"]
-    assert set(schema) == set(config.CONFIG_KEYS)
+    plain = {key: spec for key, spec in schema.items() if spec["type"] != "secret"}
+    assert set(plain) == set(config.CONFIG_KEYS)
     defaults = SentinelConfig()
-    for key, spec in schema.items():
+    for key, spec in plain.items():
         assert spec.get("description"), key
         assert spec["default"] == getattr(defaults, key), key
+
+
+def test_secret_slots_match_the_declared_manifest_entries():
+    sources = plugin_module("sentinel.sources")
+    manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text())
+    slots = {s["env"] for s in manifest["config_schema"].values() if s["type"] == "secret"}
+    assert slots == set(sources.STREAM_URL_SLOTS)
 
 
 def test_defaults_without_host():
@@ -120,3 +128,50 @@ def test_broken_getter_never_raises():
 
     cfg = SentinelConfig.load(get)
     assert cfg.vision_calls_per_hour == 60 and len(cfg.problems) == len(config.CONFIG_KEYS)
+
+
+def test_judging_defaults():
+    cfg = load({})
+    assert (cfg.motion_frames, cfg.batch_judging, cfg.batch_max_rules) == (3, True, 4)
+    assert cfg.second_opinion is True
+    assert (cfg.second_opinion_band_low, cfg.second_opinion_band_high) == (0.5, 0.8)
+    assert cfg.second_opinion_per_hour == 6 and cfg.problems == ()
+
+
+def test_judging_values_are_read():
+    cfg = load(
+        {
+            "motion_frames": 2,
+            "batch_judging": "off",
+            "batch_max_rules": 6,
+            "second_opinion": False,
+            "second_opinion_band_low": 0.6,
+            "second_opinion_band_high": 0.9,
+            "second_opinion_per_hour": 0,
+        }
+    )
+    assert (cfg.motion_frames, cfg.batch_judging, cfg.batch_max_rules) == (2, False, 6)
+    assert (cfg.second_opinion, cfg.second_opinion_per_hour) == (False, 0)
+    assert (cfg.second_opinion_band_low, cfg.second_opinion_band_high) == (0.6, 0.9)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("motion_frames", 9),
+        ("batch_max_rules", 0),
+        ("batch_max_rules", 99),
+        ("second_opinion_per_hour", -1),
+        ("second_opinion_band_high", 2),
+        ("batch_judging", "maybe"),
+    ],
+)
+def test_bad_judging_values_fall_back(key, value):
+    cfg = load({key: value})
+    assert cfg.problems and getattr(cfg, key) == getattr(SentinelConfig(), key)
+
+
+def test_an_empty_band_is_replaced_by_the_default():
+    cfg = load({"second_opinion_band_low": 0.9, "second_opinion_band_high": 0.6})
+    assert (cfg.second_opinion_band_low, cfg.second_opinion_band_high) == (0.5, 0.8)
+    assert any("band" in problem for problem in cfg.problems)

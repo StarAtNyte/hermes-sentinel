@@ -60,6 +60,7 @@ class Alerter:
         self.suppressed_total = 0
         self.failed = 0
         self._blocked = False
+        self._verified = False
 
     # ---- routing ----------------------------------------------------------------------
 
@@ -126,6 +127,8 @@ class Alerter:
     def _set_blocked(self, blocked: bool) -> None:
         with self._lock:
             self._blocked = blocked
+            if blocked:
+                self._verified = False
 
     def _count(self, result: Delivery) -> None:
         with self._lock:
@@ -138,6 +141,21 @@ class Alerter:
         """Sticky explanation while the last delivery failed on every route, else ``None``."""
         with self._lock:
             return BLOCKED_TEXT if self._blocked else None
+
+    def delivery_verified(self) -> bool:
+        """True after a delivery self-test succeeded and nothing has been refused since."""
+        with self._lock:
+            return self._verified
+
+    def send_test(self, text: str, origin: Mapping[str, Any] | None) -> Delivery:
+        """Send one self-test message to ``origin`` (no rate limit, not counted in stats).
+
+        Updates the sticky blocked flag like a real alert, and the verified flag.
+        """
+        result = self._deliver(text, origin)
+        with self._lock:
+            self._verified = result.ok
+        return result
 
     # ---- public API -------------------------------------------------------------------
 

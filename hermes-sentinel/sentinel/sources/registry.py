@@ -5,7 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .backends import CameraSource, FolderSource, ScreenSource, SnapshotUrlSource, StreamSource
+from .backends import (
+    CameraSource,
+    FileSource,
+    FolderSource,
+    ScreenSource,
+    SnapshotUrlSource,
+    StreamSource,
+)
 from .base import BaseSource, FrameSource
 from .spec import SourceSpec
 
@@ -15,6 +22,7 @@ SOURCE_CLASSES: dict[str, type[BaseSource]] = {
     "snapshot": SnapshotUrlSource,
     "screen": ScreenSource,
     "folder": FolderSource,
+    "file": FileSource,
 }
 
 

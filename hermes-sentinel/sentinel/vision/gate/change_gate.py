@@ -14,8 +14,10 @@ import numpy as np
 
 from . import ops as _ops
 from .config import GateConfig
+from .drift import DriftDetector
 from .geometry import Roi, bbox_from_mask, normalize_roi, roi_slices
 from .ops import ImageOps
+from .recent_frames import RecentFrames, TimedFrame
 from .scoring import FrameScorer
 from .types import GateResult, GateState, Reference
 
@@ -64,9 +66,11 @@ class ChangeGate:
         self._roi = normalize_roi(roi)
         self._ops = ImageOps(use_cv2=backend != "numpy")
         self._scorer = FrameScorer(self._ops)
+        self._drift = DriftDetector(self._scorer, self._ops)
         self._clock = clock
-        self._lock = threading.Lock()  # guards _state, _config and _roi
+        self._lock = threading.Lock()  # guards _state, _config, _roi and _recent
         self._state = GateState()
+        self._recent = RecentFrames()
 
     # -- properties -----------------------------------------------------------
 
@@ -86,9 +90,19 @@ class ChangeGate:
         return "cv2" if self._ops.use_cv2 else "numpy"
 
     def stats(self) -> dict[str, int]:
-        """Counters since creation: frames, changed, ticks, rebaselines."""
+        """Counters since creation: frames, changed, ticks, rebaselines, drifts."""
         with self._lock:
             return dict(self._state.stats)
+
+    def recent_frames(self, count: int | None = None) -> list[TimedFrame]:
+        """The newest ``count`` kept frames (all when None), oldest first.
+
+        Frames are ``uint8`` numpy arrays (read-only, width capped by ``recent_max_width``)
+        spaced at least ``recent_spacing_seconds`` apart, taken after each ``process`` call,
+        so the newest may be the frame just processed. Use ``ts`` to tell.
+        """
+        with self._lock:
+            return self._recent.latest(count)
 
     # -- control --------------------------------------------------------------
 
@@ -111,6 +125,7 @@ class ChangeGate:
         """Forget the background; the next frame becomes the new baseline (and ticks)."""
         with self._lock:
             self._reset_locked(keep_tick=False)
+            self._recent.clear()
 
     def _reset_locked(self, *, keep_tick: bool) -> None:
         st = self._state
@@ -119,6 +134,10 @@ class ChangeGate:
         st.background = None
         st.background_ref = None
         st.noise_ref = None
+        st.slow_ref = None
+        st.slow_ts = None
+        st.drift_checked = None
+        st.drift_streak = 0
         if not keep_tick:
             st.last_tick = None
 
@@ -140,7 +159,9 @@ class ChangeGate:
             raise ValueError(f"timestamp must be finite, got {ts!r}")
         with self._lock:
             result = self._process_locked(arr, now)
+            self._recent.offer(arr, now, self._config)
             st = self._state
+            st.stats["drifts"] += int(result.drift)
             st.stats["frames"] += 1
             st.stats["changed"] += int(result.changed)
             st.stats["ticks"] += int(result.tick)
@@ -228,19 +249,20 @@ class ChangeGate:
                 reason="global_change",
                 score_threshold=thr,
             )
-        return self._roi_result(img, cur, mask, shape, tick, now, thr)
+        return self._roi_result(img, cur, mask, thr_map, shape, tick, now)
 
     def _roi_result(
         self,
         img: np.ndarray,
         cur: Reference,
         mask: np.ndarray,
+        thr_map: np.ndarray,
         shape: tuple[int, int],
         tick: bool,
         now: float,
-        thr: float,
     ) -> GateResult:
         cfg, st = self._config, self._state
+        thr = float(np.median(thr_map))
         ph, pw = img.shape
         rows, cols = roi_slices(self._roi, pw, ph)
         roi_mask = mask[rows, cols]
@@ -251,11 +273,28 @@ class ChangeGate:
             bbox = bbox_from_mask(roi_mask, rows.start, cols.start, (pw, ph), shape)
             st.last_tick = now  # a judged change resets the idle timer
         self._scorer.update_background(st, img, cur, cfg)
-        return GateResult(
-            changed,
-            ratio,
-            bbox,
-            tick=tick,
-            reason="change" if changed else "quiet",
-            score_threshold=thr,
-        )
+        if not changed:
+            return self._quiet_result(cur, thr_map, shape, tick, now, ratio, thr)
+        self._drift.refresh(st, cur, now)
+        return GateResult(True, ratio, bbox, tick=tick, reason="change", score_threshold=thr)
+
+    def _quiet_result(
+        self,
+        cur: Reference,
+        thr_map: np.ndarray,
+        shape: tuple[int, int],
+        tick: bool,
+        now: float,
+        ratio: float,
+        thr: float,
+    ) -> GateResult:
+        """Result for a frame without a fast change: a tick, a drift, or plain quiet."""
+        cfg, st = self._config, self._state
+        if tick:  # the judge will see this frame, so it becomes the slow reference
+            self._drift.refresh(st, cur, now)
+            return GateResult(False, ratio, None, tick=True, reason="quiet", score_threshold=thr)
+        found = self._drift.check(st, cur, thr_map, self._roi, cfg, now, shape)
+        if found is None:
+            return GateResult(False, ratio, None, reason="quiet", score_threshold=thr)
+        st.last_tick = now
+        return GateResult(True, found[0], found[1], reason="drift", score_threshold=thr, drift=True)

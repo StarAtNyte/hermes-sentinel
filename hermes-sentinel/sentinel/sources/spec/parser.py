@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import fields, replace
 from typing import Any
 
-from ..constants import HTTP_SCHEMES, SourceKind
+from ..constants import HTTP_SCHEMES, VIDEO_EXTENSIONS, SourceKind
 from ..errors import SourceSpecError
 from .model import SourceSpec
 from .urls import looks_like_stream, redact_url
@@ -23,7 +23,12 @@ _OVERRIDE_KEYS = (
     "username_secret",
     "password_secret",
     "token_secret",
+    "loop",
+    "speed",
 )
+_FILE_OPTION_KEYS = frozenset({"loop", "speed"})
+_TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
+_FALSE_WORDS = frozenset({"0", "false", "no", "off"})
 
 
 def parse_index(text: Any, kind: str) -> int:
@@ -41,6 +46,42 @@ def parse_region(text: str) -> tuple[int, int, int, int]:
         raise SourceSpecError("region must be 'left,top,width,height'")
     left, top, width, height = (int(g) for g in match.groups())
     return left, top, width, height
+
+
+def _parse_bool(text: str, key: str) -> bool:
+    word = text.strip().lower()
+    if word in _TRUE_WORDS:
+        return True
+    if word in _FALSE_WORDS:
+        return False
+    raise SourceSpecError(f"{key} must be true or false, got {text!r}")
+
+
+def parse_file_spec(rest: str) -> SourceSpec:
+    """Parse the part after ``file:`` (or a bare video path): ``/path.mp4[?loop=true&speed=N]``.
+
+    The ``?options`` tail is only taken as options when every key is ``loop`` or ``speed``;
+    otherwise the whole text is the path.
+    """
+    path, _, query = rest.strip().rpartition("?")
+    pairs = [part.partition("=") for part in query.split("&")] if path else []
+    if not path or not all(key in _FILE_OPTION_KEYS for key, _, _ in pairs):
+        return SourceSpec(kind="file", target=rest.strip())
+    options: dict[str, Any] = {}
+    for key, _, value in pairs:
+        options[key] = _parse_bool(value, key) if key == "loop" else parse_index(value, key)
+    return SourceSpec(kind="file", target=path, **options)
+
+
+def _file_target(rest: str) -> str:
+    """Drop the ``//`` of a ``file:///abs/path`` URL form."""
+    if rest.startswith("///"):
+        return rest[2:]
+    return rest
+
+
+def _is_video_path(raw: str) -> bool:
+    return os.path.splitext(raw.split("?", 1)[0])[1].lower() in VIDEO_EXTENSIONS
 
 
 def named_stream(name: str, url: str) -> SourceSpec:
@@ -74,6 +115,8 @@ def _parse_prefixed(raw: str, named: Mapping[str, str]) -> SourceSpec | None:
         return SourceSpec(kind="screen", target=index, region=region)
     if prefix_l in ("folder", "dir"):
         return SourceSpec(kind="folder", target=rest.strip())
+    if prefix_l == "file":
+        return parse_file_spec(_file_target(rest))
     if prefix_l == "snapshot":
         return SourceSpec(kind="snapshot", target=rest.strip())
     if prefix_l == "stream":
@@ -108,9 +151,11 @@ def parse_string(text: str, *, named_streams: Mapping[str, str] | None) -> Sourc
         return parsed
     if os.path.isdir(os.path.expanduser(raw)):
         return SourceSpec(kind="folder", target=raw)
+    if _is_video_path(raw) and "://" not in raw:
+        return parse_file_spec(raw)
     raise SourceSpecError(
         f"unrecognised source {redact_url(raw)!r}; use camera:N, screen[:N], a URL, "
-        "folder:/path, or a configured stream name"
+        "folder:/path, file:/path/video.mp4, or a configured stream name"
     )
 
 

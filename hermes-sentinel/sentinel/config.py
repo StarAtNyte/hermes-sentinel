@@ -43,6 +43,13 @@ CONFIG_KEYS: tuple[str, ...] = (
     "max_storage_mb",
     "stream_urls",
     "alert_snapshots",
+    "motion_frames",
+    "batch_judging",
+    "batch_max_rules",
+    "second_opinion",
+    "second_opinion_band_low",
+    "second_opinion_band_high",
+    "second_opinion_per_hour",
 )
 
 
@@ -136,6 +143,36 @@ def _as_streams(value: Any, problems: list[str]) -> dict[str, str]:
     return out
 
 
+def _read_judging(raw: Mapping[str, Any], problems: list[str]) -> dict[str, Any]:
+    """The motion, batching and second-opinion settings as ``SentinelConfig`` keyword values."""
+    low, high = _read_band(raw, problems)
+    return {
+        "motion_frames": _as_int(raw["motion_frames"], 3, 0, 3, "motion_frames", problems),
+        "batch_judging": _as_bool(raw["batch_judging"], True, "batch_judging", problems),
+        "batch_max_rules": _as_int(raw["batch_max_rules"], 4, 1, 8, "batch_max_rules", problems),
+        "second_opinion": _as_bool(raw["second_opinion"], True, "second_opinion", problems),
+        "second_opinion_band_low": low,
+        "second_opinion_band_high": high,
+        "second_opinion_per_hour": _as_int(
+            raw["second_opinion_per_hour"], 6, 0, 120, "second_opinion_per_hour", problems
+        ),
+    }
+
+
+def _read_band(raw: Mapping[str, Any], problems: list[str]) -> tuple[float, float]:
+    """The second-opinion confidence band ``(low, high)``; a bad pair falls back to 0.5-0.8."""
+    low = _as_float(
+        raw["second_opinion_band_low"], 0.5, 0.0, 1.0, "second_opinion_band_low", problems
+    )
+    high = _as_float(
+        raw["second_opinion_band_high"], 0.8, 0.0, 1.0, "second_opinion_band_high", problems
+    )
+    if low >= high:
+        problems.append(f"second_opinion band {low:g}-{high:g} is empty; using 0.5-0.8")
+        return 0.5, 0.8
+    return low, high
+
+
 @dataclass(frozen=True)
 class SentinelConfig:
     """Validated plugin settings (defaults match ``plugin.yaml``)."""
@@ -151,6 +188,13 @@ class SentinelConfig:
     max_storage_mb: float = 500.0
     stream_urls: dict[str, str] = field(default_factory=dict)
     alert_snapshots: bool = True
+    motion_frames: int = 3
+    batch_judging: bool = True
+    batch_max_rules: int = 4
+    second_opinion: bool = True
+    second_opinion_band_low: float = 0.5
+    second_opinion_band_high: float = 0.8
+    second_opinion_per_hour: int = 6
     problems: tuple[str, ...] = ()
 
     @classmethod
@@ -207,6 +251,7 @@ class SentinelConfig:
             ),
             stream_urls=_as_streams(raw["stream_urls"], problems),
             alert_snapshots=_as_bool(raw["alert_snapshots"], True, "alert_snapshots", problems),
+            **_read_judging(raw, problems),
             problems=tuple(problems),
         )
         for problem in problems:

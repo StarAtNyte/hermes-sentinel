@@ -21,7 +21,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .alerts import GATEWAY_INJECTION_YAML
-from .sources import SourceSpec, SourceSpecError, list_sources, redact_url
+from .sources import (
+    SourceSpec,
+    SourceSpecError,
+    list_sources,
+    probe_secrets,
+    redact_url,
+    referenced_secrets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +184,12 @@ def _check_deps(env: SetupEnv) -> Check:
     )
 
 
+def _delivery_verified(alerter: Any) -> bool:
+    """Whether a delivery self-test succeeded (`/sentinel setup --test-delivery`)."""
+    check = getattr(alerter, "delivery_verified", None)
+    return bool(check()) if callable(check) else False
+
+
 def _check_injection(env: SetupEnv) -> Check:
     title = "Alert delivery permission"
     blocked = env.alerter.delivery_blocked() if env.alerter is not None else None
@@ -188,6 +201,8 @@ def _check_injection(env: SetupEnv) -> Check:
             "Hermes refused to inject Sentinel's alerts into the chat.",
             GATEWAY_INJECTION_YAML,
         )
+    if _delivery_verified(env.alerter):
+        return Check("injection", title, OK, "The delivery test message was accepted by Hermes.")
     sent = 0
     try:
         sent = int((env.alerter.stats() if env.alerter is not None else {}).get("sent", 0))
@@ -201,7 +216,8 @@ def _check_injection(env: SetupEnv) -> Check:
         WARN,
         "Cannot be verified from inside a plugin. The classic CLI needs nothing; "
         "every other surface (Desktop, Telegram, Discord...) needs this opt-in "
-        "(off by default), otherwise alerts are refused.",
+        "(off by default), otherwise alerts are refused. "
+        "Run /sentinel setup --test-delivery to try it (starts one agent turn).",
         GATEWAY_INJECTION_YAML,
     )
 
@@ -255,6 +271,38 @@ def _check_sources(env: SetupEnv) -> tuple[Check, list[Any]]:
         "Plug in or allow a camera, or watch a snapshot:https://..., rtsp:// or "
         "folder:/path source instead.",
     ), infos
+
+
+def _check_secrets(env: SetupEnv) -> Check | None:
+    """Can every ``${SECRET}`` a stream or rule references be read? ``None`` if none are used."""
+    title = "Camera secrets"
+    texts = list(_named_streams(env).values())
+    if env.store_getter is not None:
+        texts += [rule.source for rule in env.store_getter().list_rules(enabled_only=True)]
+    status = probe_secrets(referenced_secrets(texts))
+    if not status.referenced:
+        return None
+    if status.missing:
+        names = ", ".join(status.missing)
+        return Check(
+            "secrets",
+            title,
+            WARN,
+            f"Not set: {names}. Cameras that use them stay offline.",
+            "Set them in Hermes (plugin settings for hermes-sentinel, or the profile .env).",
+        )
+    if status.waiting:
+        names = ", ".join(status.waiting)
+        return Check(
+            "secrets",
+            title,
+            WARN,
+            f"Waiting for the Hermes secret scope: {names}. This multiplexed gateway only "
+            "exposes secrets inside a tool or command call.",
+            "Run /sentinel status or any sentinel tool once; the values are then kept in memory "
+            "only and the cameras connect by themselves.",
+        )
+    return Check("secrets", title, OK, f"{len(status.ready)} secret(s) readable, none shown.")
 
 
 def _check_default_source(env: SetupEnv, infos: list[Any]) -> Check:
@@ -484,6 +532,7 @@ def run_checks(env: SetupEnv) -> list[Check]:
     out.append(_safe("vision", "Vision model", lambda: _check_vision(env)))
     out.append(_safe("sources", "Cameras and screens", sources))
     out.append(_safe("default_source", "Default source", lambda: _check_default_source(env, infos)))
+    out.append(_safe("secrets", "Camera secrets", lambda: _check_secrets(env)))
     out.append(_safe("config", "Plugin settings", lambda: _check_config(env)))
     out.append(_safe("engine", "Watcher", lambda: _check_engine(env)))
     out.append(_safe("storage", "Storage", lambda: _check_storage(env)))

@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from .compiler.motion import looks_like_motion
 from .constants import MODE_ABSENCE, MODE_CONDITION, MODE_TRIGGER
 from .spec import RuleSpec
 
@@ -30,6 +31,7 @@ class Recipe:
     cooldown_seconds: float = 600.0
     source_hint: str = "camera"
     confidence_threshold: float | None = None
+    motion: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe summary of the recipe."""
@@ -157,6 +159,7 @@ def build_rule(
         action="agent" if prompt else "notify",
         action_prompt=prompt,
         recipe=recipe.name,
+        motion=recipe.motion or looks_like_motion(recipe.question),
         compiled_by="manual",
         origin=dict(origin or {}),
         **kwargs,

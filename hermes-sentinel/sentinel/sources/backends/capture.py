@@ -9,6 +9,7 @@ from typing import Any
 
 from .. import dependencies
 from ..base import BaseSource, Frame
+from ..constants import STREAM_SCHEMES
 from ..errors import SourceDisconnected, SourceError, SourceSpecError
 from ..frames import as_bgr
 from ..spec import SourceSpec, expand_url
@@ -149,7 +150,7 @@ class StreamSource(CaptureSource):
         super().__init__(spec, clock=clock)
 
     def _create_capture(self, cv2: ModuleType) -> Any:
-        url = expand_url(str(self.spec.target), origin=self.name)
+        url = expand_url(str(self.spec.target), origin=self.name, schemes=STREAM_SCHEMES)
         ms = int(self.spec.timeout * 1000)
         params: list[int] = []
         for prop in ("CAP_PROP_OPEN_TIMEOUT_MSEC", "CAP_PROP_READ_TIMEOUT_MSEC"):

@@ -295,7 +295,7 @@ def test_command_setup(rig):
     assert out.startswith("Sentinel setup check")
     assert "Cameras and screens: No camera" in out
     assert out.splitlines()[-1].startswith("Ready: yes - ")
-    assert "setup |" in rig.ctx.run_command("sentinel", "help")
+    assert "setup [--test-delivery] |" in rig.ctx.run_command("sentinel", "help")
 
 
 def test_tool_setup_check(rig):
@@ -304,7 +304,7 @@ def test_tool_setup_check(rig):
     assert [c["id"] for c in out["checks"]][:2] == ["deps", "injection"]
     assert out["report"].startswith("Sentinel setup check")
     schema = plugin_module("sentinel.tools").SCHEMAS["sentinel_setup_check"]
-    assert schema["parameters"]["properties"] == {}
+    assert set(schema["parameters"]["properties"]) == {"test_delivery"}
 
 
 def test_watch_mentions_setup_only_when_a_check_fails(rig):

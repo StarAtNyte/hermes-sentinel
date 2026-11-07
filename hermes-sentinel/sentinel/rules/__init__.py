@@ -23,7 +23,9 @@ falls back to the deterministic parser instead of failing.
 
 from __future__ import annotations
 
+from .calibration import lowered_threshold, raised_threshold
 from .compiler import COMPILE_INSTRUCTIONS, COMPILE_SCHEMA, compile_rule, fallback_rule
+from .compiler.motion import looks_like_motion
 from .constants import (
     ACTION_AGENT,
     ACTION_NOTIFY,
@@ -99,6 +101,9 @@ __all__ = [
     "compile_rule",
     "fallback_rule",
     "get_recipe",
+    "looks_like_motion",
+    "lowered_threshold",
     "new_rule_id",
+    "raised_threshold",
     "recipe_names",
 ]

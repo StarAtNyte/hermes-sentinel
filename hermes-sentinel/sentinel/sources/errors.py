@@ -25,6 +25,14 @@ class SourceNotReady(SourceError):
     """The source is reachable but has nothing to deliver yet (e.g. an empty folder)."""
 
 
+class SecretScopeUnavailable(SourceNotReady):
+    """A ``${SECRET}`` cannot be read yet: this thread has no Hermes secret scope.
+
+    Raised on boot and scheduler threads of a multiplexing gateway. It clears by itself once a
+    tool or command call (which runs inside the scope) primes the in-memory secret cache.
+    """
+
+
 class SourceSpecError(SourceError, ValueError):
     """A source spec is malformed or unsafe (e.g. a literal password in a URL)."""
 

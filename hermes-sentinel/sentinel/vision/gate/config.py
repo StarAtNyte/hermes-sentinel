@@ -63,6 +63,24 @@ class GateConfig:
         idle_check_seconds: emit ``tick`` after this long without a change or tick (<= 0
             disables ticks).
         tick_on_start: emit a tick on the first frame so state rules get an initial verdict.
+        drift_enabled: also compare against a slow reference (last judged frame) so gradual
+            changes that the fast background absorbs still trigger a ``"drift"`` result.
+        drift_threshold_factor: the drift score threshold is the fast per-pixel threshold
+            times this factor (< 1: cumulative change is judged more sensitively).
+        drift_min_area_ratio: fraction of the ROI that must differ from the slow reference.
+        drift_max_area_ratio: a slow-reference difference covering more of the ROI than this
+            is lighting (headlights, sunrise), not an object: the reference is refreshed silently.
+        drift_min_fill: the changed pixels must fill at least this fraction of their bounding
+            box; diffuse noise and wandering shadows do not.
+        drift_check_seconds: minimum spacing between drift comparisons (they cost a full
+            scoring pass, and slow changes need no finer sampling).
+        drift_confirm_checks: consecutive drift comparisons that must agree before firing.
+        drift_refresh_seconds: the slow reference is replaced after this long even if
+            nothing was judged, so a stale reference cannot accumulate nuisance forever.
+        recent_frames: how many recent frames the gate keeps for motion sequences (0 = none).
+        recent_spacing_seconds: minimum time between two kept frames.
+        recent_max_width: kept frames are subsampled to at most this width.
+        recent_max_bytes: memory cap for the kept frames together.
     """
 
     max_width: int = 320
@@ -80,6 +98,18 @@ class GateConfig:
     open_iterations: int = 1
     idle_check_seconds: float = 300.0
     tick_on_start: bool = True
+    drift_enabled: bool = True
+    drift_threshold_factor: float = 0.5
+    drift_min_area_ratio: float = 0.004
+    drift_max_area_ratio: float = 0.15
+    drift_min_fill: float = 0.25
+    drift_check_seconds: float = 1.0
+    drift_confirm_checks: int = 2
+    drift_refresh_seconds: float = 600.0
+    recent_frames: int = 3
+    recent_spacing_seconds: float = 0.5
+    recent_max_width: int = 640
+    recent_max_bytes: int = 16_000_000
 
     def __post_init__(self) -> None:
         """Validate every field; raise ``ValueError`` naming the first bad one."""
@@ -98,6 +128,17 @@ class GateConfig:
             (0.0 < self.global_change_max <= 1.0, "global_change_max must be in (0, 1]"),
             (0 <= self.open_iterations <= 5, "open_iterations must be in [0, 5]"),
             (math.isfinite(self.idle_check_seconds), "idle_check_seconds must be finite"),
+            (0.0 < self.drift_threshold_factor <= 1.0, "drift_threshold_factor must be in (0, 1]"),
+            (0.0 <= self.drift_min_area_ratio < 1.0, "drift_min_area_ratio must be in [0, 1)"),
+            (0.0 < self.drift_max_area_ratio <= 1.0, "drift_max_area_ratio must be in (0, 1]"),
+            (0.0 <= self.drift_min_fill <= 1.0, "drift_min_fill must be in [0, 1]"),
+            (self.drift_check_seconds >= 0.0, "drift_check_seconds must be >= 0"),
+            (1 <= self.drift_confirm_checks <= 20, "drift_confirm_checks must be in [1, 20]"),
+            (self.drift_refresh_seconds > 0.0, "drift_refresh_seconds must be > 0"),
+            (0 <= self.recent_frames <= 16, "recent_frames must be in [0, 16]"),
+            (self.recent_spacing_seconds >= 0.0, "recent_spacing_seconds must be >= 0"),
+            (self.recent_max_width >= 16, "recent_max_width must be >= 16"),
+            (self.recent_max_bytes >= 0, "recent_max_bytes must be >= 0"),
         ]
         for ok, msg in checks:
             if not ok:

@@ -98,7 +98,7 @@ class SnapshotUrlSource(BaseSource):
                 return
             # fail early with an install hint
             dependencies.require_cv2(f"snapshot source {self.name!r}")
-            self._url = expand_url(str(self.spec.target), origin=self.name)
+            self._url = expand_url(str(self.spec.target), origin=self.name, schemes=HTTP_SCHEMES)
             self._headers = {"User-Agent": _USER_AGENT, "Accept": "image/*", **self._auth_headers()}
             self._is_open = True
 

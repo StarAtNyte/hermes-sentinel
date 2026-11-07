@@ -10,14 +10,22 @@ from .judge import (
     VERDICT_SCHEMA,
     VISION_TASK,
     VISION_TASK_INFO,
+    BatchOutcome,
+    BatchQuestion,
     Description,
     Example,
     Judge,
+    SequenceFrame,
     Verdict,
+    combine_verdicts,
     parse_verdict,
 )
 
 __all__ = [
+    "BatchOutcome",
+    "BatchQuestion",
+    "SequenceFrame",
+    "combine_verdicts",
     "DESCRIBE_SCHEMA",
     "VERDICT_SCHEMA",
     "VISION_TASK",

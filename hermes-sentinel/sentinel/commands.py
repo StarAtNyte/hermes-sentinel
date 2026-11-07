@@ -9,7 +9,18 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .alerts import GATEWAY_INJECTION_YAML, capture_origin, is_chat_origin, same_chat
+from .alerts import (
+    GATEWAY_INJECTION_YAML,
+    adopt_session_rules,
+    bind_rules,
+    capture_origin,
+    format_delivery_test,
+    is_chat_origin,
+    plan_here,
+    route_hint,
+    run_delivery_test,
+    visible_to,
+)
 from .runtime import Sentinel
 from .setup_check import SetupEnv, format_report, run_checks
 
@@ -19,9 +30,8 @@ __all__ = ["ARGS_HINT", "USAGE", "SentinelCommand"]
 
 ARGS_HINT = "[setup|status|list|pause <id>|resume <id>|test <id>|budget|here [<id>|all]]"
 USAGE = (
-    "Usage: /sentinel setup | status | list | pause <rule_id> | resume <rule_id> | "
-    "test <rule_id> | "
-    "budget | here [<rule_id>|all]"
+    "Usage: /sentinel setup [--test-delivery] | status | list | pause <rule_id> | "
+    "resume <rule_id> | test <rule_id> | budget | here [<rule_id>|all]"
 )
 
 
@@ -40,13 +50,19 @@ class SentinelCommand:
         parts = (raw_args or "").split()
         sub = parts[0].lower() if parts else "status"
         arg = parts[1] if len(parts) > 1 else ""
+        test_delivery = sub in ("setup", "check", "doctor") and any(
+            p.lower() in ("--test-delivery", "test-delivery") for p in parts[1:]
+        )
+        self.s.prime_secrets()
         try:
             route = self._remember(kwargs)
+            if sub != "here":
+                self._adopt(route, kwargs)
             caller = self._caller(kwargs)
             if sub == "here":
                 return self.here(arg, route, kwargs, caller)
             if sub in ("setup", "check", "doctor"):
-                return self.setup(kwargs)
+                return self.setup(kwargs, test_delivery=test_delivery)
             if sub in ("status", "st"):
                 return self.status(caller)
             if sub in ("list", "ls", "rules"):
@@ -72,6 +88,16 @@ class SentinelCommand:
             logger.debug("sentinel: could not remember route: %s", exc)
             return {}
 
+    def _adopt(self, route: dict[str, str], kwargs: dict[str, Any]) -> None:
+        """Give this session's route-less rules the route just learned (any subcommand)."""
+        session_id = str(kwargs.get("session_id") or "")
+        try:
+            adopt_session_rules(
+                self.s.store, self.s.engine_if_built, self.s.store.list_rules(), session_id, route
+            )
+        except Exception as exc:  # noqa: BLE001 - adoption is best effort
+            logger.debug("sentinel: could not adopt session rules: %s", exc)
+
     def _caller(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Who is typing: the command keywords, the session surface and any known route."""
         try:
@@ -81,7 +107,8 @@ class SentinelCommand:
 
     def _visible_rules(self, caller: dict[str, Any]) -> list[Any]:
         """Rules the caller may see: all for local sessions, only its own in a messaging chat."""
-        return [r for r in self.s.store.list_rules() if same_chat(r.origin, caller)]
+        routes = self.s.routes
+        return [r for r in self.s.store.list_rules() if visible_to(r.origin, caller, routes)]
 
     # -- subcommands
 
@@ -104,33 +131,21 @@ class SentinelCommand:
             )
         caller = caller if caller is not None else {}
         session_id = str(kwargs.get("session_id") or route.get("session_key") or "")
-        rules = self._visible_rules(caller)
-        if target and target.lower() != "all":
-            rules = [r for r in rules if r.id == target]
-            if not rules:
-                return f"No rule {target!r}. Try /sentinel list."
-        elif not target:
-            rules = [r for r in rules if session_id and r.origin.get("session_id") == session_id]
-        bound = []
-        for spec in rules:
-            origin = {k: v for k, v in spec.origin.items() if k in ("session_id", "surface")}
-            origin.update(route)
-            saved = self.s.store.upsert_rule(spec.with_changes(origin=origin))
-            engine = self.s.engine_if_built
-            if engine is not None:
-                engine.update_rule(saved)
-            bound.append(saved.id)
-        if not bound:
-            return (
-                "Alerts for rules created in this session from now on will come here. "
-                "Use /sentinel here all to move existing rules too."
-            )
+        plan = plan_here(self._visible_rules(caller), target, session_id)
+        if not plan.rules:
+            return plan.reply
+        bound = bind_rules(self.s.store, self.s.engine_if_built, plan.rules, route)
         return f"Alerts for {', '.join(bound)} will now come to this chat."
 
-    def setup(self, kwargs: dict[str, Any]) -> str:
-        """Run the setup check (probes devices briefly; no network, no vision calls)."""
-        env = SetupEnv.from_sentinel(self.s, kwargs)
-        return format_report(run_checks(env))
+    def setup(self, kwargs: dict[str, Any], *, test_delivery: bool = False) -> str:
+        """Run the setup check (probes devices briefly; no network, no vision calls).
+
+        ``test_delivery`` also sends one small message to this chat (it starts an agent
+        turn, so it is opt-in) and reports whether Hermes accepted it.
+        """
+        result = run_delivery_test(self.s.alerter, self._caller(kwargs)) if test_delivery else None
+        report = format_report(run_checks(SetupEnv.from_sentinel(self.s, kwargs)))
+        return report if result is None else f"{report}\n{format_delivery_test(result)}"
 
     def status(self, caller: dict[str, Any] | None = None) -> str:
         head = f"hermes-sentinel {self.version}".strip()
@@ -204,13 +219,16 @@ class SentinelCommand:
             lines.append(
                 f"{spec.id} [{state}] {spec.source}: {spec.text or spec.question}{last_text}"
             )
+            hint = route_hint(spec.origin, caller or {})
+            if hint:
+                lines.append(f"  note: {hint}")
         return "\n".join(lines)
 
     def set_enabled(self, rule_id: str, enabled: bool, caller: dict[str, Any] | None = None) -> str:
         if not rule_id:
             return USAGE
         spec = self.s.store.get_rule(rule_id)
-        if spec is not None and not same_chat(spec.origin, caller or {}):
+        if spec is not None and not visible_to(spec.origin, caller or {}, self.s.routes):
             spec = None
         if spec is None:
             return f"No rule {rule_id!r}. Try /sentinel list."
@@ -225,7 +243,7 @@ class SentinelCommand:
         if not rule_id:
             return USAGE
         spec = self.s.store.get_rule(rule_id)
-        if spec is not None and not same_chat(spec.origin, caller or {}):
+        if spec is not None and not visible_to(spec.origin, caller or {}, self.s.routes):
             return f"Test of {rule_id} failed: no such rule"
         result = self.s.engine.test_rule(rule_id)
         if not result.get("ok"):

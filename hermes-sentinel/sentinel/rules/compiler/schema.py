@@ -34,6 +34,7 @@ COMPILE_SCHEMA: dict[str, Any] = {
         },
         "action": {"type": "string", "enum": list(ACTIONS)},
         "action_prompt": {"type": ["string", "null"]},
+        "motion": {"type": ["boolean", "null"]},
     },
     "required": ["question", "mode"],
 }
@@ -57,6 +58,9 @@ A vision model will later be shown single frames and asked `question`, so:
   ("top-left corner", "left half"), else null.
 - `schedule`: {"start": "HH:MM", "end": "HH:MM", "days": [0..6 with 0=Monday] or null} only
   if the user limits when to watch ("at night" -> 22:00-06:00), else null.
+- `motion`: true only when the question is about movement or change over time that one
+  still cannot show ("is someone walking toward the door", "is the water level rising"),
+  else false. Static questions stay false.
 - `action`: "agent" only if the user wants something DONE beyond being told (then put the
   instruction in `action_prompt`), else "notify" with action_prompt null.
 Return only the JSON object."""

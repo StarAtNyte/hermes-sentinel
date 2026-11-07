@@ -24,6 +24,7 @@ from ..schedule import Schedule
 from ..spec import RuleSpec
 from ..validation import validate_roi
 from .fallback import clean_text, fallback_rule, rule_defaults
+from .motion import looks_like_motion
 from .schema import COMPILE_INSTRUCTIONS, COMPILE_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ def coerce_llm_fields(data: Mapping[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"question": _coerce_question(data)}
     _coerce_timing(data, out)
     _coerce_region_and_schedule(data, out)
+    out["motion"] = data.get("motion") is True or looks_like_motion(out["question"])
     prompt = data.get("action_prompt")
     prompt = " ".join(prompt.split())[:MAX_ACTION_PROMPT_LEN] if isinstance(prompt, str) else ""
     if data.get("action") == ACTION_AGENT and prompt:

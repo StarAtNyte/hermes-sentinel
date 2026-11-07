@@ -27,6 +27,8 @@ class SourceSpec:
         width, height: requested camera capture resolution (best effort).
         username_secret, password_secret: secret names for HTTP basic auth (snapshot).
         token_secret: secret name for an HTTP bearer token (snapshot).
+        loop: file sources only; restart the video at the end instead of finishing.
+        speed: file sources only; frame step (1 = every frame, 3 = every third frame).
     """
 
     kind: SourceKind
@@ -39,6 +41,8 @@ class SourceSpec:
     username_secret: str | None = None
     password_secret: str | None = None
     token_secret: str | None = None
+    loop: bool = False
+    speed: int = 1
 
     def __post_init__(self) -> None:
         """Validate and normalise every field."""
@@ -62,7 +66,18 @@ class SourceSpec:
             return base
         if self.kind == "folder":
             return f"folder:{self.target}"
+        if self.kind == "file":
+            return f"file:{self.target}{self._file_options()}"
         return f"{self.kind}:{redact_url(str(self.target))}"
+
+    def _file_options(self) -> str:
+        """``?loop=true&speed=N`` suffix for the non-default file options, else empty."""
+        options = []
+        if self.loop:
+            options.append("loop=true")
+        if self.speed != 1:
+            options.append(f"speed={self.speed}")
+        return "?" + "&".join(options) if options else ""
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe dict (credentials redacted, secret *names* kept)."""
@@ -76,6 +91,8 @@ class SourceSpec:
         for attr in _OPTIONAL_FIELDS:
             if getattr(self, attr) is not None:
                 out[attr] = getattr(self, attr)
+        if self.kind == "file":
+            out["loop"], out["speed"] = self.loop, self.speed
         out["timeout"] = self.timeout
         return out
 

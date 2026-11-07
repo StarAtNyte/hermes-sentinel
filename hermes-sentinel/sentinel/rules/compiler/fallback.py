@@ -17,6 +17,7 @@ from ..constants import (
 )
 from ..errors import RuleValidationError
 from ..spec import RuleSpec
+from .motion import looks_like_motion
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ def fallback_rule(
         text=cleaned,
         mode=mode,
         hold_seconds=hold,
+        motion=looks_like_motion(body),
         compiled_by=COMPILED_BY_FALLBACK,
         origin=dict(origin or {}),
         **rule_defaults(defaults),

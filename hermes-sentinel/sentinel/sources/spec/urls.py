@@ -6,7 +6,8 @@ import re
 import urllib.parse
 
 from ..constants import HTTP_SCHEMES, STREAM_PATH_HINTS
-from ..errors import SourceError, SourceSpecError
+from ..errors import SourceSpecError
+from .secrets import require_secret
 
 PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _SENSITIVE_QUERY_KEYS = frozenset(
@@ -68,35 +69,17 @@ def redact_url(url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
 
-def get_secret(name: str) -> str | None:
-    """Read one secret through Hermes' secret scope (never ``os.environ``)."""
-    try:
-        from agent.secret_scope import get_secret as hermes_get_secret
-    except ImportError as exc:
-        raise SourceError(
-            f"cannot resolve secret {name!r}: Hermes secret scope is unavailable"
-        ) from exc
-    try:
-        value = hermes_get_secret(name)
-    except Exception as exc:  # e.g. fail-closed multiplex scope
-        raise SourceError(f"cannot resolve secret {name!r}: {type(exc).__name__}") from exc
-    if value is None:
-        return None
-    return str(value)
+def expand_url(template: str, *, origin: str, schemes: frozenset[str] | None = None) -> str:
+    """Substitute ``${NAME}`` placeholders with URL-quoted secret values.
 
-
-def require_secret(name: str, *, origin: str) -> str:
-    """Return the secret ``name`` or raise :class:`SourceError` if it is unset."""
-    value = get_secret(name)
-    if not value:
-        raise SourceError(
-            f"{origin}: secret {name!r} is not set; add it to Hermes' secrets/.env for this profile"
-        )
-    return value
-
-
-def expand_url(template: str, *, origin: str) -> str:
-    """Substitute ``${NAME}`` placeholders with URL-quoted secret values."""
+    A template that is exactly one placeholder (``${SENTINEL_STREAM_URL_1}``) holds a whole URL
+    in the secret, so the value is used as is and, when ``schemes`` is given, checked against it.
+    """
+    if is_placeholder(template.strip()):
+        url = require_secret(PLACEHOLDER_RE.fullmatch(template.strip()).group(1), origin=origin)
+        if schemes is not None:
+            _split_template(url, schemes)
+        return url
 
     def sub(match: re.Match[str]) -> str:
         return urllib.parse.quote(require_secret(match.group(1), origin=origin), safe="")
@@ -142,7 +125,13 @@ def _reject_literal_credentials(parts: urllib.parse.SplitResult) -> None:
 
 
 def check_url_template(url: str, *, schemes: frozenset[str]) -> None:
-    """Validate scheme and reject literal credentials in a URL template."""
+    """Validate scheme and reject literal credentials in a URL template.
+
+    A template that is a single ``${NAME}`` placeholder is accepted as is: the secret holds the
+    whole URL and is checked when it is resolved.
+    """
+    if is_placeholder(url.strip()) and not any(ch in url for ch in "\r\n\t\x00"):
+        return
     _reject_literal_credentials(_split_template(url, schemes))
 
 

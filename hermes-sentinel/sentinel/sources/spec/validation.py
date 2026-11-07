@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -10,9 +11,11 @@ from ..constants import (
     HTTP_SCHEMES,
     MAX_CAMERA_INDEX,
     MAX_DIMENSION,
+    MAX_FRAME_STEP,
     MAX_SCREEN_INDEX,
     SOURCE_KINDS,
     STREAM_SCHEMES,
+    VIDEO_EXTENSIONS,
 )
 from ..errors import SourceSpecError
 from ..timeouts import clamp_timeout
@@ -48,12 +51,39 @@ def _validate_folder(spec: SourceSpec) -> None:
         raise SourceSpecError("folder path contains a NUL byte")
 
 
+def _validate_file(spec: SourceSpec) -> None:
+    target = spec.target
+    if not isinstance(target, str) or not target.strip():
+        raise SourceSpecError("file target must be a non-empty path")
+    if "\x00" in target:
+        raise SourceSpecError("file path contains a NUL byte")
+    if "://" in target:
+        raise SourceSpecError("file sources read local paths only; no network URLs")
+    if os.path.splitext(target.strip())[1].lower() not in VIDEO_EXTENSIONS:
+        allowed = ", ".join(sorted(VIDEO_EXTENSIONS))
+        raise SourceSpecError(f"unsupported video file type; use one of {allowed}")
+
+
+def _validate_file_options(spec: SourceSpec) -> None:
+    if spec.kind != "file":
+        if spec.loop or spec.speed != 1:
+            raise SourceSpecError("loop and speed are only valid for file sources")
+        return
+    if not isinstance(spec.loop, bool):
+        raise SourceSpecError("loop must be true or false")
+    if isinstance(spec.speed, bool) or not isinstance(spec.speed, int):
+        raise SourceSpecError("speed must be a whole number of frames")
+    if not 1 <= spec.speed <= MAX_FRAME_STEP:
+        raise SourceSpecError(f"speed must be between 1 and {MAX_FRAME_STEP}")
+
+
 _TARGET_VALIDATORS: dict[str, Callable[[SourceSpec], None]] = {
     "camera": _validate_index,
     "screen": _validate_index,
     "stream": _validate_stream,
     "snapshot": _validate_snapshot,
     "folder": _validate_folder,
+    "file": _validate_file,
 }
 
 
@@ -105,3 +135,4 @@ def validate_spec(spec: SourceSpec) -> None:
     _validate_region(spec)
     _validate_dimensions(spec)
     _validate_secrets(spec)
+    _validate_file_options(spec)

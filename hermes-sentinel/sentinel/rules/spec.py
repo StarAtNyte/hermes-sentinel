@@ -45,6 +45,9 @@ def _serialise_field(name: str, value: Any) -> Any:
 class RuleSpec:
     """One watch rule. All times are seconds; ``created_at``/``updated_at`` are ISO-8601 UTC.
 
+    ``motion`` marks a question about movement or change over time; the judge then sees a
+    short ordered sequence of recent frames instead of one still.
+
     ``origin`` holds where alerts go (session / platform identifiers recorded when the rule
     was created); it is opaque to this module.
     """
@@ -65,6 +68,7 @@ class RuleSpec:
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
     enabled: bool = True
     recipe: str | None = None
+    motion: bool = False
     compiled_by: str = COMPILED_BY_MANUAL
     origin: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now_iso)

@@ -242,6 +242,7 @@ def test_here_variants(rig):
     handler = rig.ctx.commands["sentinel"]["handler"]
     assert "did not identify itself" in handler("here")
     assert "No rule 'zz'" in handler("here zz", session_key="k")
+    assert f"Alerts for {rule_id}" in handler("here", session_id="other", session_key="k")
     assert "from now on" in handler("here", session_id="other", session_key="k")
     assert handler(f"here {rule_id}", session_key="k2").endswith("will now come to this chat.")
     assert rig.sentinel.store.get_rule(rule_id).origin["session_key"] == "k2"

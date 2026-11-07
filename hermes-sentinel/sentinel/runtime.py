@@ -18,6 +18,7 @@ from .alerts import Alerter, RouteBook
 from .budget import Budget
 from .config import SentinelConfig
 from .engine import Engine, EngineSettings
+from .sources import clear_cached_secrets, prime_secrets, referenced_secrets
 from .storage import Store, StoreError
 from .vision import Judge
 
@@ -221,6 +222,20 @@ class Sentinel:
         if not self._closed:
             self.boot()
 
+    def prime_secrets(self) -> None:
+        """Remember the ``${SECRET}`` values sources use, while a secret scope is active.
+
+        Called at the start of every tool and command call. On a multiplexing gateway only
+        those calls run inside the scope; the values go to an in-memory cache (never to disk)
+        that the capture threads fall back on. Never raises.
+        """
+        try:
+            sources = list(self.config.stream_urls.values())
+            sources += [rule.source for rule in self.store.list_rules(enabled_only=True)]
+            prime_secrets(referenced_secrets(sources))
+        except Exception as exc:  # noqa: BLE001 - priming is best effort
+            logger.debug("sentinel: priming secrets failed: %s", exc)
+
     def housekeeping(self) -> None:
         """Apply retention (``store.prune_if_due``) even when no rule is enabled. Never raises."""
         try:
@@ -258,6 +273,7 @@ class Sentinel:
             self._engine = None
             self._store = None
             self._budget = None
+        clear_cached_secrets()
         global _ACTIVE
         with _ACTIVE_LOCK:
             if _ACTIVE is self:
