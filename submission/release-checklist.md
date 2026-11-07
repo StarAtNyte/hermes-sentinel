@@ -46,6 +46,7 @@ In a separate profile or home with a vision model set for `sentinel_vision` (see
 1. Copy `submission/catalog-entry.yaml` and replace every `<FILL_40_CHAR_SHA>`; delete the comment lines at the top.
 2. Confirm `capabilities.provides_tools` equals `plugin.yaml` `provides_tools`. Confirm `requires_hermes` is the same string in both and not newer than the current Hermes release.
 3. Check `ls plugin-catalog | grep -i -E 'sentinel|camera|vision|watch'` in your fork for duplicates (rule 16) and state the result in the PR.
+   Last checked 2026-11-07 against a catalog of 1,052 entries: no plugin watches cameras or screens from plain-English rules with a change gate, a vision judge and alerts. Nearest neighbours: `hermes-desktop-camera` (a composer camera button), `hermes-ros` (grabs frames from ROS robots), `hermes-monitor` (kanban worker health), `hermes-vision-inline` (attaches images to the session model). Re-run the check on the day you open the PR, since the catalog grows daily.
 
 ## 8. Fork, add the file, open the PR
 ```
