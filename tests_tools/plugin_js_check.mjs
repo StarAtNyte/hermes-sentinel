@@ -98,7 +98,8 @@ const SETUP = {
   checks: [
     { id: 'deps', title: 'Python packages', status: 'ok', detail: 'all importable', fix: '' },
     { id: 'vision', title: 'Vision model', status: 'warn', detail: 'uses your default model; it must accept images', fix: 'set auxiliary.sentinel_vision' },
-    { id: 'sources', title: 'Cameras and screens', status: 'fail', detail: 'none found', fix: 'Connect a webcam' }
+    { id: 'sources', title: 'Cameras and screens', status: 'fail', detail: 'none found', fix: 'Connect a webcam' },
+    { id: 'delivery', title: 'Alert permission', status: 'warn', detail: 'unverified', fix: 'gateway:\n  allow_gateway_injection: true' }
   ]
 }
 const base = () => ({
@@ -113,6 +114,14 @@ const base = () => ({
 })
 
 // 1. helpers
+assert.equal(m.plural(1, 'source'), '1 source')
+assert.equal(m.plural(0, 'rule'), '0 rules')
+assert.equal(m.plural(undefined, 'rule'), '0 rules')
+assert.deepEqual(m.sourceName({ key: 'camera:0', label: 'Door cam' }), { name: 'Door cam', full: 'Door cam' })
+assert.equal(m.sourceName({ key: 'file:/home/me/clips/mug.mp4' }).name, 'mug.mp4')
+assert.match(m.sourceName({ key: 'file:/home/me/clips/mug.mp4' }).full, /^\/home\/me\/clips /)
+assert.equal(m.sourceName({ key: '/tmp/a/b.mkv' }).name, 'b.mkv')
+assert.equal(m.sourceName({ key: 'rtsp://cam.local/stream' }).name, 'rtsp://cam.local/stream')
 assert.equal(m.fmtAge(null), 'never')
 assert.equal(m.fmtAge(2), 'just now')
 assert.equal(m.fmtAge(125), '2m ago')
@@ -165,6 +174,8 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   assert.ok(flat.indexOf('newest') < flat.search(/\bold\b/))
   assert.ok(find(tree, n => n.type === 'img' && n.props.src === 'data:image/jpeg;base64,BBBB').length === 1)
   assert.match(flat, /Offline/)
+  assert.match(flat, /1 source, 1 rule\b|2 sources, 1 rule\b/)
+  assert.match(flat, /\b1 rule\b/)
   assert.match(flat, /25%|5 \/ 20/)
   assert.ok(find(tree, n => n.props && n.props['aria-label'] === 'Mark event correct').length === 2)
 
@@ -295,12 +306,16 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   assert.equal(ctx.calls.filter(x => x.p === '/setup').length, 1)
   c.tick(true); await settle()
   assert.equal(ctx.calls.filter(x => x.p.startsWith('/setup')).length, 1) // not polled
-  assert.deepEqual(m.setupIssues(c.getState().setup).map(i => i.id), ['sources', 'vision'])
+  assert.deepEqual(m.setupIssues(c.getState().setup).map(i => i.id), ['sources', 'vision', 'delivery'])
   let tree = expand(m.SentinelPage({ controller: c }))
   const card = find(tree, n => n.type === 'section' && n.props['aria-label'] === 'Setup')[0]
   assert.ok(card)
   const flat = text(card)
   assert.match(flat, /Ready: no - 1 thing to fix/)
+  const code = find(card, n => n.type === 'pre')
+  assert.equal(code.length, 1) // only the multi-line fix is a code block; prose stays text
+  assert.equal(text(code[0]), 'gateway:\n  allow_gateway_injection: true')
+  assert.match(code[0].props.className, /hs-pre/)
   assert.match(flat, /Connect a webcam/)
   assert.doesNotMatch(flat, /Python packages/) // ok checks are not listed
   assert.ok(flat.indexOf('Cameras and screens') < flat.indexOf('Vision model'))

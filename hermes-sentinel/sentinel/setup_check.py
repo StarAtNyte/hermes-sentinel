@@ -553,6 +553,16 @@ def fail_titles(checks: list[Check]) -> list[str]:
     return [c.title for c in checks if c.status == FAIL]
 
 
+def _ready_line(summary: dict[str, Any]) -> str:
+    """The closing verdict: failures are "to fix", warnings alone are "to review"."""
+    count = summary["to_fix"]
+    if not summary["ready"]:
+        return f"Ready: no - {count} {'thing' if count == 1 else 'things'} to fix"
+    if count == 0:
+        return "Ready: yes - nothing to fix"
+    return f"Ready: yes - {count} {'item' if count == 1 else 'items'} to review"
+
+
 def format_report(checks: list[Check]) -> str:
     marks = {OK: "[ok]  ", WARN: "[warn]", FAIL: "[FAIL]"}
     lines = ["Sentinel setup check"]
@@ -561,6 +571,5 @@ def format_report(checks: list[Check]) -> str:
         if c.fix and c.status != OK:
             lines.append("       fix: " + c.fix.replace("\n", "\n            "))
     s = summarize(checks)
-    noun = "thing" if s["to_fix"] == 1 else "things"
-    lines.append(f"Ready: {'yes' if s['ready'] else 'no'} - {s['to_fix']} {noun} to fix")
+    lines.append(_ready_line(s))
     return "\n".join(lines)

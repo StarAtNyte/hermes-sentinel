@@ -83,7 +83,19 @@ def test_healthy_setup_has_only_unverifiable_warnings(tmp_path):
     ]
     assert {c.id for c in checks if c.status != "ok"} == {"injection", "vision"}
     assert sc.summarize(checks)["ready"] is True
-    assert sc.format_report(checks).splitlines()[-1] == "Ready: yes - 2 things to fix"
+    assert sc.format_report(checks).splitlines()[-1] == "Ready: yes - 2 items to review"
+
+
+def _last_line(*statuses: str) -> str:
+    checks = [sc.Check(id=str(i), title=str(i), status=s) for i, s in enumerate(statuses)]
+    return sc.format_report(checks).splitlines()[-1]
+
+
+def test_ready_line_wording():
+    assert _last_line("ok") == "Ready: yes - nothing to fix"
+    assert _last_line("ok", "warn") == "Ready: yes - 1 item to review"
+    assert _last_line("warn", "fail") == "Ready: no - 2 things to fix"
+    assert _last_line("fail") == "Ready: no - 1 thing to fix"
 
 
 def test_deps_missing(tmp_path):

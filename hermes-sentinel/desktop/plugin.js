@@ -74,6 +74,30 @@ export function relTime(ts, nowMs = Date.now()) {
   return fmtAge((nowMs - ms) / 1000)
 }
 
+/** "1 rule", "2 rules". */
+export function plural(count, word) {
+  const n = Number.isFinite(count) ? count : 0
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+/**
+ * Short display label for a source: its label when it has one, otherwise the key with a
+ * file path reduced to its basename. `full` is the tooltip text (the whole key, or the
+ * parent directory for file sources).
+ */
+export function sourceName(source) {
+  const key = String((source && source.key) || '')
+  const label = source && source.label ? String(source.label) : ''
+  const raw = label || key
+  const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^file:/i.test(raw)
+  const isPath = !isUrl && (/^file:/i.test(raw) || raw.includes('/') || raw.includes('\\'))
+  if (!isPath) return { name: raw, full: raw }
+  const path = raw.replace(/^file:(\/\/)?/i, '').replace(/[\\/]+$/, '')
+  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  if (cut < 0) return { name: path || raw, full: raw }
+  return { name: path.slice(cut + 1) || raw, full: `${path.slice(0, cut) || '/'} (${raw})` }
+}
+
 /** Backend errors surface as "<status>: {json}" or plain text; reduce to a readable line. */
 export function errMessage(err) {
   const raw = String((err && err.message) || err || 'Request failed')
@@ -453,6 +477,7 @@ const CSS = `
 .hs-conf .hs-meter{width:80px}
 .hs-steps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .hs-fix{margin-top:2px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary)}
+.hs-fix-code{margin:4px 0 0}
 .hs-error{color:var(--ui-text-secondary)}
 .hs-notice{padding:6px 10px;border-radius:4px;background:var(--ui-bg-quaternary)}
 .hs-notice[data-kind=error]{box-shadow:inset 0 0 0 1px var(--ui-accent)}
@@ -499,6 +524,11 @@ export function setupIssues(setup) {
     .sort((a, b) => rank[a.status] - rank[b.status])
 }
 
+function fixBlock(fix) {
+  if (!String(fix).includes('\n')) return el('div', { className: 'hs-fix', children: fix })
+  return el('pre', { className: 'hs-pre hs-fix-code', tabIndex: 0, 'aria-label': 'Suggested fix', children: String(fix) })
+}
+
 function SetupCard({ setup, busy, controller }) {
   const issues = setupIssues(setup)
   if (!issues.length) return null
@@ -517,7 +547,7 @@ function SetupCard({ setup, busy, controller }) {
           el(Badge, { variant: c.status === 'fail' ? 'destructive' : 'warn', size: 'xs', children: c.status === 'fail' ? 'Fix' : 'Review' }),
           el('strong', { children: c.title }),
           el('span', { className: 'hs-muted', children: c.detail })),
-        c.fix ? el('div', { className: 'hs-fix', children: c.fix }) : null))
+        c.fix ? fixBlock(c.fix) : null))
     }),
     el('div', { className: 'hs-muted', children: 'The same checklist is available as /sentinel setup in chat.' }))
 }
@@ -531,7 +561,7 @@ function StatusBar({ status, error, loaded }) {
   return h('div', { className: 'hs-card hs-row', 'aria-label': 'Sentinel status' },
     el(Badge, { variant: eng.running ? 'success' : 'muted', children: state }),
     eng.since ? el('span', { className: 'hs-muted', children: `since ${relTime(eng.since)}` }) : null,
-    el('span', { className: 'hs-muted', children: `${status.sources ?? 0} sources, ${status.rules ?? 0} rules` }),
+    el('span', { className: 'hs-muted', children: `${plural(status.sources, 'source')}, ${plural(status.rules, 'rule')}` }),
     budget.paused ? el(Badge, { variant: 'warn', children: 'Budget paused' }) : null,
     el('span', { className: 'hs-grow' }),
     h('div', { className: 'hs-meters' },
@@ -544,13 +574,14 @@ function SourceTile({ source, frame, now }) {
   const online = !!source.online
   const age = frame && frame.at ? Math.max(0, (now - frame.at) / 1000) : source.last_frame_age_s
   const showImg = frame && frame.src
+  const { name, full } = sourceName(source)
   return h('li', { className: 'hs-card hs-tile' },
     h('div', { className: 'hs-row' },
-      el('strong', { className: 'hs-grow hs-clip', title: source.label || source.key, children: source.label || source.key }),
+      el('strong', { className: 'hs-grow hs-clip', title: full, children: name }),
       el(Badge, { variant: 'outline', size: 'xs', children: source.kind })),
     h('div', {
       className: 'hs-frame', 'data-offline': String(!online), role: 'img', tabIndex: 0,
-      'aria-label': `${source.label || source.key}: ${online ? 'live' : 'offline'}, last frame ${fmtAge(age)}`
+      'aria-label': `${name}: ${online ? 'live' : 'offline'}, last frame ${fmtAge(age)}`
     },
       showImg
         ? el('img', { src: frame.src, alt: '', draggable: false })
@@ -559,7 +590,7 @@ function SourceTile({ source, frame, now }) {
     h('div', { className: 'hs-row hs-muted' },
       el('span', { children: `Last seen ${fmtAge(age)}` }),
       el('span', { className: 'hs-grow' }),
-      el('span', { children: `${source.rules ?? 0} rule${source.rules === 1 ? '' : 's'}` })),
+      el('span', { children: plural(source.rules, 'rule') })),
     source.error ? el('div', { className: 'hs-error', role: 'alert', children: source.error }) : null)
 }
 
@@ -590,6 +621,7 @@ const shortStatus = status => typeof status === 'string' && status.length > 0 &&
 function RuleRow({ rule, controller, busy }) {
   const [confirming, setConfirming] = useState(false)
   const paused = !!rule.paused
+  const source = sourceName({ key: rule.source })
   return h('li', { className: 'hs-card hs-rule' },
     h('div', { className: 'hs-row' },
       el('span', { className: 'hs-grow hs-text', children: rule.text }),
@@ -600,7 +632,7 @@ function RuleRow({ rule, controller, busy }) {
     !paused && !shortStatus(rule.status)
       ? el('div', { className: 'hs-muted hs-text', children: String(rule.status) }) : null,
     h('div', { className: 'hs-row hs-muted' },
-      el('span', { children: `Source ${rule.source}` }),
+      el('span', { title: source.full, children: `Source ${source.name}` }),
       el('span', { children: `${rule.vision_calls_hour ?? 0} vision calls/h` }),
       el('span', { children: `Last event ${relTime(rule.last_event_at)}` }),
       el('span', { children: `Cooldown ${rule.cooldown_s}s` }),

@@ -76,7 +76,7 @@ Storage                    writable
 Alert destination          known
 Budget caps                60/hour, 500/day
 Rules                      none
-Ready: yes - 2 things to fix
+Ready: yes - 2 items to review
 ```
 
 The two warnings are the expected ones: neither the permission nor the model's image support can be checked ahead of time.
