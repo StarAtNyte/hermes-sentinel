@@ -71,5 +71,8 @@ jobs:
       - name: rule_lint (catalog admission rules)
         run: uv run --no-sync python scripts/rule_lint.py hermes-sentinel
 
-      - name: structure report (informational, never fails)
-        run: uv run --no-sync python scripts/structure_lint.py --report || true
+      - name: ruff (strict Code standard)
+        run: uv run --no-sync ruff check --config ruff.strict.toml .
+
+      - name: structure_lint (fails on any finding)
+        run: uv run --no-sync python scripts/structure_lint.py

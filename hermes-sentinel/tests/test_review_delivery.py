@@ -19,7 +19,7 @@ from sentinel_rig import HoldLastSource, Rig, verdict
 alerts = plugin_module("sentinel.alerts")
 rules_mod = plugin_module("sentinel.rules")
 store_mod = plugin_module("sentinel.storage")
-tools = plugin_module("sentinel.tools")
+tools = plugin_module("sentinel.agent.tools")
 CAM = "camera:7"
 YAML = "allow_gateway_injection: true"
 
@@ -417,7 +417,10 @@ def test_taught_examples_are_reencoded_to_small_jpegs(rig, tmp_path):
     for rec in rig.sentinel.store.list_examples(rule_id, "pos"):
         data = Path(rec.path).read_bytes()
         img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-        assert max(img.shape[:2]) <= tools.EXAMPLE_MAX_SIDE
+        assert (
+            max(img.shape[:2])
+            <= plugin_module("sentinel.agent.tools.common.images").EXAMPLE_MAX_SIDE
+        )
         assert len(data) < 600_000
     out = rig.call("sentinel_teach", rule_id=rule_id, kind="no", from_source=True)
     assert out["ok"]
@@ -438,7 +441,9 @@ def test_event_photos_taught_as_examples_are_shrunk(rig):
     assert out["ok"], out
     rec = store.list_examples(rule_id, "pos")[0]
     img = cv2.imdecode(np.frombuffer(Path(rec.path).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
-    assert max(img.shape[:2]) <= tools.EXAMPLE_MAX_SIDE
+    assert (
+        max(img.shape[:2]) <= plugin_module("sentinel.agent.tools.common.images").EXAMPLE_MAX_SIDE
+    )
 
 
 # --------------------------------------------------------------------------- 19: compile cap
@@ -460,18 +465,15 @@ def test_rule_compiling_has_its_own_small_cap(rig):
 
 
 def test_example_cache_is_capped_by_bytes(tmp_path, monkeypatch):
-    import threading
-    from collections import OrderedDict
-
-    engine_mod = plugin_module("sentinel.engine")
-    monkeypatch.setattr(engine_mod, "EXAMPLE_CACHE_BYTES", 2500)
-    fake = SimpleNamespace(_examples=OrderedDict(), _examples_lock=threading.Lock())
+    cache_mod = plugin_module("sentinel.engine.infra.example_cache")
+    monkeypatch.setattr(cache_mod, "EXAMPLE_CACHE_BYTES", 2500)
+    cache = cache_mod.ExampleCache(store=None)
     paths = []
     for i in range(5):
         p = tmp_path / f"e{i}.jpg"
         p.write_bytes(b"x" * 1000)
         paths.append(str(p))
     for p in paths:
-        assert engine_mod.Engine._example_bytes(fake, p) == b"x" * 1000
-    assert len(fake._examples) == 2  # 2 x 1000 <= 2500 < 3 x 1000
-    assert [k[0] for k in fake._examples] == paths[-2:]
+        assert cache.read(p) == b"x" * 1000
+    assert len(cache.entries) == 2  # 2 x 1000 <= 2500 < 3 x 1000
+    assert [k[0] for k in cache.entries] == paths[-2:]

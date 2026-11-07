@@ -173,6 +173,41 @@ def _read_band(raw: Mapping[str, Any], problems: list[str]) -> tuple[float, floa
     return low, high
 
 
+def _read_raw(get: Callable[[str, Any], Any] | None, problems: list[str]) -> dict[str, Any]:
+    """Read every config key through ``get``; an unreadable key is recorded and read as ``None``."""
+
+    def read(key: str) -> Any:
+        if get is None:
+            return None
+        try:
+            return get(key, None)
+        except Exception as exc:  # noqa: BLE001 - a broken host config must not kill load
+            problems.append(f"{key}: could not be read ({type(exc).__name__})")
+            return None
+
+    return {key: read(key) for key in CONFIG_KEYS}
+
+
+def _read_default_source(source: Any, problems: list[str]) -> str:
+    """The default source string, or ``DEFAULT_SOURCE`` (with a problem noted) when unusable."""
+    if source is None:
+        return DEFAULT_SOURCE
+    if isinstance(source, (str, int)) and not isinstance(source, bool) and str(source).strip():
+        return str(source).strip()
+    problems.append("default_source: expected a source string like 'camera:0'")
+    return DEFAULT_SOURCE
+
+
+def _read_confirmation(raw: Mapping[str, Any], problems: list[str]) -> tuple[int, int]:
+    """The ``(confirm_k, confirm_n)`` pair, falling back to 2 of 3 when k exceeds n."""
+    k = _as_int(raw["confirm_k"], 2, 1, 20, "confirm_k", problems)
+    n = _as_int(raw["confirm_n"], 3, 1, 20, "confirm_n", problems)
+    if k > n:
+        problems.append(f"confirm_k ({k}) is larger than confirm_n ({n}); using 2 of 3")
+        return 2, 3
+    return k, n
+
+
 @dataclass(frozen=True)
 class SentinelConfig:
     """Validated plugin settings (defaults match ``plugin.yaml``)."""
@@ -201,32 +236,9 @@ class SentinelConfig:
     def load(cls, get: Callable[[str, Any], Any] | None) -> SentinelConfig:
         """Read every key via ``get(key, default)`` (``ctx.get_config``). Never raises."""
         problems: list[str] = []
-
-        def read(key: str) -> Any:
-            if get is None:
-                return None
-            try:
-                return get(key, None)
-            except Exception as exc:  # noqa: BLE001 - a broken host config must not kill load
-                problems.append(f"{key}: could not be read ({type(exc).__name__})")
-                return None
-
-        raw = {key: read(key) for key in CONFIG_KEYS}
-        source = raw["default_source"]
-        if source is None:
-            default_source = DEFAULT_SOURCE
-        elif (
-            isinstance(source, (str, int)) and not isinstance(source, bool) and str(source).strip()
-        ):
-            default_source = str(source).strip()
-        else:
-            problems.append("default_source: expected a source string like 'camera:0'")
-            default_source = DEFAULT_SOURCE
-        k = _as_int(raw["confirm_k"], 2, 1, 20, "confirm_k", problems)
-        n = _as_int(raw["confirm_n"], 3, 1, 20, "confirm_n", problems)
-        if k > n:
-            problems.append(f"confirm_k ({k}) is larger than confirm_n ({n}); using 2 of 3")
-            k, n = 2, 3
+        raw = _read_raw(get, problems)
+        default_source = _read_default_source(raw["default_source"], problems)
+        k, n = _read_confirmation(raw, problems)
         cfg = cls(
             default_source=default_source,
             vision_calls_per_hour=_as_cap(

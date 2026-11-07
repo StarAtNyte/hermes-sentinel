@@ -440,51 +440,59 @@ class _PyVisitor(ast.NodeVisitor):
             )
 
         if name in {"setattr", "delattr"} and node.args:
-            target_root = _root_name(node.args[0])
-            target_origin = self._origin(target_root)
-            if target_origin and (
-                _is_hermes_module(target_origin)
-                or target_root[:1].isupper()
-                or target_origin in {"sys", "builtins"}
-            ):
-                self.add(
-                    node,
-                    9,
-                    f"{name}() on imported '{_dotted(node.args[0]) or target_root}' "
-                    "(runtime override)",
-                )
-            elif self._is_sys_modules(node.args[0]):
-                self.add(node, 9, f"{name}() on sys.modules")
-
+            self._check_attribute_override(node, name)
         if isinstance(func, ast.Attribute):
-            owner = _dotted(func.value)
-            if (
-                not self.is_test
-                and self._is_sys_modules(func.value)
-                and func.attr
-                in {"update", "setdefault", "pop", "clear", "__setitem__", "__delitem__", "popitem"}
-            ):
-                self.add(node, 9, f"sys.modules.{func.attr}(): never replace or inject modules")
-            if not self.is_test and func.attr == "setattr" and owner.endswith("monkeypatch"):
-                self.add(node, 9, "monkeypatch.setattr in plugin runtime code")
-            if (
-                not self.is_test
-                and func.attr in {"patch", "object"}
-                and (owner.split(".")[-1] in {"mock", "patch"})
-            ):
-                self.add(node, 9, "mock.patch in plugin runtime code")
-            if owner in {"importlib"} and func.attr == "reload":
-                self.add(node, 9, "importlib.reload rebinds module objects")
-            if func.attr in NETWORK_CALLS and origin and origin.split(".", 1)[0] in NETWORK_MODULES:
-                self._mark_network(node)
-            if func.attr in WRITE_ATTRS and self._mentions_file(node):
-                self.file_writes.append(node.lineno)
+            self._check_attribute_call(node, func, origin)
         if name == "open" and self._mentions_file(node) and self._open_for_write(node):
             self.file_writes.append(node.lineno)
         if name and self._origin(name) and self._origin(name).split(".", 1)[0] in NETWORK_MODULES:
             self._mark_network(node)
         self._check_command_args(node, func, origin)
         self.generic_visit(node)
+
+    def _check_attribute_override(self, node: ast.Call, name: str) -> None:
+        """Flag ``setattr``/``delattr`` aimed at imported modules, core classes or sys.modules."""
+        target_root = _root_name(node.args[0])
+        target_origin = self._origin(target_root)
+        if target_origin and (
+            _is_hermes_module(target_origin)
+            or target_root[:1].isupper()
+            or target_origin in {"sys", "builtins"}
+        ):
+            self.add(
+                node,
+                9,
+                f"{name}() on imported '{_dotted(node.args[0]) or target_root}' (runtime override)",
+            )
+        elif self._is_sys_modules(node.args[0]):
+            self.add(node, 9, f"{name}() on sys.modules")
+
+    def _check_attribute_call(
+        self, node: ast.Call, func: ast.Attribute, origin: str | None
+    ) -> None:
+        """Flag module injection, monkeypatching, reloads and network or file-write calls."""
+        owner = _dotted(func.value)
+        if (
+            not self.is_test
+            and self._is_sys_modules(func.value)
+            and func.attr
+            in {"update", "setdefault", "pop", "clear", "__setitem__", "__delitem__", "popitem"}
+        ):
+            self.add(node, 9, f"sys.modules.{func.attr}(): never replace or inject modules")
+        if not self.is_test and func.attr == "setattr" and owner.endswith("monkeypatch"):
+            self.add(node, 9, "monkeypatch.setattr in plugin runtime code")
+        if (
+            not self.is_test
+            and func.attr in {"patch", "object"}
+            and (owner.split(".")[-1] in {"mock", "patch"})
+        ):
+            self.add(node, 9, "mock.patch in plugin runtime code")
+        if owner in {"importlib"} and func.attr == "reload":
+            self.add(node, 9, "importlib.reload rebinds module objects")
+        if func.attr in NETWORK_CALLS and origin and origin.split(".", 1)[0] in NETWORK_MODULES:
+            self._mark_network(node)
+        if func.attr in WRITE_ATTRS and self._mentions_file(node):
+            self.file_writes.append(node.lineno)
 
     def _check_command_args(self, node: ast.Call, func: ast.AST, origin: str | None) -> None:
         """``subprocess.run(["git", "pull"])``: join list/vararg command parts, then match."""

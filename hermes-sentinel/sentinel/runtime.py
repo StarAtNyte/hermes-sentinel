@@ -1,9 +1,12 @@
-"""Per-load wiring: one :class:`Sentinel` object owns the store, budget, judge, alerter and
-engine for a plugin context. ``register(ctx)`` builds it; tools and commands use it.
+"""Per-load wiring: the :class:`Sentinel` service graph of one plugin context.
+
+One :class:`Sentinel` owns the store, budget, judge, alerter and engine. ``register(ctx)``
+builds it; tools and commands use it.
 
 Everything heavy is lazy: the SQLite store opens on first use, the engine (and its threads)
 starts on the first rule or, at load, only when enabled rules already exist. ``shutdown()``
-(wired to ``ctx.on_unload``) stops the engine and closes the store.
+(wired to ``ctx.on_unload``) stops the engine and closes the store. The dashboard API finds the
+loaded instance through :func:`active_sentinel` of this module.
 """
 
 from __future__ import annotations
@@ -18,6 +21,14 @@ from .alerts import Alerter, RouteBook
 from .budget import Budget
 from .config import SentinelConfig
 from .engine import Engine, EngineSettings
+from .service import (
+    BackgroundPruner,
+    EngineWiring,
+    active_sentinel,
+    clear_active_sentinel,
+    register_aux_tasks,
+    set_active_sentinel,
+)
 from .sources import clear_cached_secrets, prime_secrets, referenced_secrets
 from .storage import Store, StoreError
 from .vision import Judge
@@ -40,40 +51,15 @@ NOTICES_PER_HOUR = 6
 ROUTES_FILENAME = "routes.json"
 
 
-_ACTIVE: Sentinel | None = None
-_ACTIVE_LOCK = threading.Lock()
-
-
-def set_active_sentinel(sentinel: Sentinel | None) -> None:
-    """Publish the loaded Sentinel so the dashboard API (a separately imported module) can
-    reach the same store/engine the tools use. ``None`` clears it."""
-    global _ACTIVE
-    with _ACTIVE_LOCK:
-        _ACTIVE = sentinel
-
-
-def active_sentinel() -> Sentinel | None:
-    with _ACTIVE_LOCK:
-        return _ACTIVE
-
-
-def register_aux_tasks(ctx: Any) -> list[str]:
-    """Register the plugin's two LLM tasks (vision judge, rule compiler). Never raises."""
-    from .rules import RULES_TASK, RULES_TASK_INFO
-    from .vision import VISION_TASK, VISION_TASK_INFO
-
-    done = []
-    for key, info in ((VISION_TASK, VISION_TASK_INFO), (RULES_TASK, RULES_TASK_INFO)):
-        try:
-            ctx.register_auxiliary_task(key, **info)
-            done.append(key)
-        except Exception as exc:  # noqa: BLE001 - a host without aux tasks still gets tools
-            logger.warning("sentinel: could not register auxiliary task %s: %s", key, exc)
-    return done
-
-
 class Sentinel:
     """Lazily built service graph for one plugin context. Thread-safe."""
+
+    _store: Store | None = None
+    _budget: Budget | None = None
+    _engine: Engine | None = None
+    _routes: RouteBook | None = None
+    _closed = False
+    _boot_timer: threading.Timer | None = None
 
     def __init__(
         self,
@@ -90,25 +76,23 @@ class Sentinel:
         threaded: bool = True,
         use_process_lock: bool = True,
     ) -> None:
+        """Build the (cheap) shell; the store, budget and engine are created on first use."""
         self.ctx = ctx
         self.config = config or SentinelConfig.load(getattr(ctx, "get_config", None))
         self._store_factory = store_factory or self._default_store
-        self._source_factory = source_factory
-        self._source_key = source_key
-        self._gate_factory = gate_factory
-        self._settings = settings
-        self._clock = clock
+        self._wiring = EngineWiring(
+            source_factory=source_factory,
+            source_key=source_key,
+            gate_factory=gate_factory,
+            settings=settings,
+            clock=clock,
+            wall_clock=wall_clock,
+            threaded=threaded,
+            use_process_lock=use_process_lock,
+        )
         self._wall = wall_clock
-        self._threaded = threaded
-        self._use_process_lock = use_process_lock
-        self._lock = threading.RLock()
-        self._store: Store | None = None
-        self._budget: Budget | None = None
-        self._engine: Engine | None = None
-        self._routes: RouteBook | None = None
-        self._closed = False
-        self._boot_timer: threading.Timer | None = None
-        self._pruning = False
+        self._lock = threading.RLock()  # guards the lazy services below and the closed flag
+        self._pruner = BackgroundPruner()
         self.judge = Judge(lambda: getattr(ctx, "llm", None), clock=clock)
         self.alerter = Alerter(
             ctx,
@@ -136,11 +120,12 @@ class Sentinel:
             if self._store is None:
                 self._store = self._store_factory(self.config)
             store = self._store
-        self._kick_prune(store)
+        self._pruner.kick(store, self._engine)
         return store
 
     @property
     def budget(self) -> Budget:
+        """The vision-call budget over the store (built on first use)."""
         with self._lock:
             if self._budget is None:
                 self._budget = Budget(
@@ -153,23 +138,17 @@ class Sentinel:
 
     @property
     def engine(self) -> Engine:
+        """The watch engine (built on first use; not started until a rule needs it)."""
         with self._lock:
             if self._engine is None:
                 store = self.store
-                self._engine = Engine(
+                self._engine = self._wiring.build_engine(
                     store=store,
                     judge=self.judge,
                     alerter=self.alerter,
                     budget=self.budget,
                     config=self.config,
-                    settings=self._settings,
-                    source_factory=self._source_factory,
-                    source_key=self._source_key,
-                    gate_factory=self._gate_factory,
-                    clock=self._clock,
-                    wall_clock=self._wall,
-                    lock_path=store.data_dir / LOCK_FILENAME if self._use_process_lock else None,
-                    threaded=self._threaded,
+                    lock_filename=LOCK_FILENAME,
                 )
             return self._engine
 
@@ -187,6 +166,7 @@ class Sentinel:
 
     @property
     def engine_if_built(self) -> Engine | None:
+        """The engine if something already built it, else ``None`` (never builds one)."""
         return self._engine
 
     # ---- lifecycle --------------------------------------------------------------------
@@ -243,27 +223,6 @@ class Sentinel:
         except Exception as exc:  # noqa: BLE001
             logger.debug("sentinel: housekeeping prune failed: %s", exc)
 
-    def _kick_prune(self, store: Store) -> None:
-        """From tool/command entry points: prune in the background when the engine's own
-        scheduler is not doing it (no engine running). Cheap no-op unless a prune is due."""
-        engine = self._engine
-        if self._pruning or (engine is not None and engine.running):
-            return
-        due = getattr(store, "prune_due", None)
-        if due is not None and not due():
-            return
-        self._pruning = True
-
-        def run() -> None:
-            try:
-                store.prune_if_due()
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("sentinel: background prune failed: %s", exc)
-            finally:
-                self._pruning = False
-
-        threading.Thread(target=run, name="sentinel-prune", daemon=True).start()
-
     def shutdown(self) -> None:
         """Stop threads and close the store (``ctx.on_unload``). Idempotent, never raises."""
         with self._lock:
@@ -274,10 +233,7 @@ class Sentinel:
             self._store = None
             self._budget = None
         clear_cached_secrets()
-        global _ACTIVE
-        with _ACTIVE_LOCK:
-            if _ACTIVE is self:
-                _ACTIVE = None
+        clear_active_sentinel(self)
         if timer is not None:
             timer.cancel()
         if engine is not None:

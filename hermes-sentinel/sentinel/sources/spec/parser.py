@@ -100,6 +100,22 @@ def named_stream(name: str, url: str) -> SourceSpec:
     return SourceSpec(kind=kind, target=target, name=name)
 
 
+def _parse_screen(rest: str) -> SourceSpec:
+    """Parse the part after ``screen:``: an optional monitor index and ``@x,y,w,h`` region."""
+    index_text, at, region_text = rest.partition("@")
+    index = parse_index(index_text, "screen") if index_text.strip() else 1
+    region = parse_region(region_text) if at else None
+    return SourceSpec(kind="screen", target=index, region=region)
+
+
+def _parse_stream(rest: str, named: Mapping[str, str]) -> SourceSpec:
+    """Parse the part after ``stream:``: a configured stream name or a literal URL."""
+    target = rest.strip()
+    if target in named:
+        return named_stream(target, named[target])
+    return SourceSpec(kind="stream", target=target)
+
+
 def _parse_prefixed(raw: str, named: Mapping[str, str]) -> SourceSpec | None:
     """Handle ``prefix:rest`` forms (camera:, screen:, folder:, snapshot:, stream:, URLs)."""
     prefix, sep, rest = raw.partition(":")
@@ -109,10 +125,7 @@ def _parse_prefixed(raw: str, named: Mapping[str, str]) -> SourceSpec | None:
     if prefix_l in ("camera", "webcam", "cam"):
         return SourceSpec(kind="camera", target=parse_index(rest, "camera"))
     if prefix_l in ("screen", "monitor"):
-        index_text, at, region_text = rest.partition("@")
-        index = parse_index(index_text, "screen") if index_text.strip() else 1
-        region = parse_region(region_text) if at else None
-        return SourceSpec(kind="screen", target=index, region=region)
+        return _parse_screen(rest)
     if prefix_l in ("folder", "dir"):
         return SourceSpec(kind="folder", target=rest.strip())
     if prefix_l == "file":
@@ -120,10 +133,7 @@ def _parse_prefixed(raw: str, named: Mapping[str, str]) -> SourceSpec | None:
     if prefix_l == "snapshot":
         return SourceSpec(kind="snapshot", target=rest.strip())
     if prefix_l == "stream":
-        target = rest.strip()
-        if target in named:
-            return named_stream(target, named[target])
-        return SourceSpec(kind="stream", target=target)
+        return _parse_stream(rest, named)
     if rest.startswith("//"):
         if prefix_l in HTTP_SCHEMES and not looks_like_stream(raw):
             return SourceSpec(kind="snapshot", target=raw)

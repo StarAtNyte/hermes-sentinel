@@ -5,12 +5,12 @@
 #   3. pytest plugin tests           (hermes-sentinel/tests)
 #   4. pytest tool tests             (tests_tools)
 #   5. rule_lint                     (catalog admission rules 3/7/8/9/11/17)
-#   6. structure report              (NON-FAILING: structure_lint --report counts; the modules
-#                                     listed under "Remaining refactor" in ARCHITECTURE.md still
-#                                     violate the size limits)
-#   7. hermes plugins validate <plugin> --install-deps
-#   8. dev-link: symlink + enable the plugin in the isolated home (so its deps are in that env)
-#   9. hermes plugins doctor <plugin> --ci   (fails on any "WARN:" line, not just a bad exit)
+#   6. ruff check (strict)           (ruff.strict.toml: docstrings, naming, complexity; Code standard)
+#   7. structure_lint                (module/class/function size, nesting, package width,
+#                                     __init__ logic, docstrings; FAILS on any finding)
+#   8. hermes plugins validate <plugin> --install-deps
+#   9. dev-link: symlink + enable the plugin in the isolated home (so its deps are in that env)
+#  10. hermes plugins doctor <plugin> --ci   (fails on any "WARN:" line, not just a bad exit)
 # then prints a pass/fail summary and exits non-zero if any step failed.
 #
 # Isolation: the Hermes steps run with HERMES_HOME pointed at a dev-only data root
@@ -22,7 +22,7 @@
 # cache dir so neither the Hermes checkout nor the plugin dir gets __pycache__ files.
 #
 # Usage: scripts/check.sh [--with-hermes] [-h|--help]
-#        The Hermes steps (7-9) are SKIPPED by default so the real Hermes install is never
+#        The Hermes steps (8-10) are SKIPPED by default so the real Hermes install is never
 #        touched; pass --with-hermes to run them (still in the isolated home).
 # Env:   HERMES_AGENT_DIR (default ~/.hermes/hermes-agent, read only)
 #        HERMES_PYTHON    (default python3; must have Hermes' dependencies)
@@ -42,7 +42,7 @@ for arg in "$@"; do
   case "$arg" in
     --skip-hermes) SKIP_HERMES=1 ;;
     --with-hermes) SKIP_HERMES=0 ;;
-    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "check.sh: unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -124,12 +124,6 @@ hermes_doctor_strict() {
   return "$rc"
 }
 
-# Informational: prints structure_lint counts, never fails the run.
-structure_report() {
-  "$UV" run --group dev python "$ROOT/scripts/structure_lint.py" --report | sed -n '1,12p'
-  echo "(informational only; see 'Remaining refactor' in hermes-sentinel/docs/ARCHITECTURE.md)"
-}
-
 run_step "ruff check" "$UV" run --group dev ruff check .
 run_step "ruff format --check" "$UV" run --group dev ruff format --check .
 if [[ -n "$(find "$PLUGIN_DIR/tests" -name 'test_*.py' -print -quit 2>/dev/null)" ]]; then
@@ -139,7 +133,8 @@ else
 fi
 run_step "pytest (tests_tools)" "$UV" run --group dev pytest "$ROOT/tests_tools"
 run_step "rule_lint" "$UV" run --group dev python "$ROOT/scripts/rule_lint.py" "$PLUGIN_DIR"
-run_step "structure report (info)" structure_report
+run_step "ruff check (strict)" "$UV" run --group dev ruff check --config "$ROOT/ruff.strict.toml" .
+run_step "structure_lint" "$UV" run --group dev python "$ROOT/scripts/structure_lint.py"
 
 if [[ $SKIP_HERMES -eq 1 ]]; then
   skip_step "hermes plugins validate" "pass --with-hermes to run"

@@ -19,11 +19,11 @@ from typing import Any
 from harness.fake_sources import FakeClock, FakeSource, SourceError
 from harness.plugin_loader import plugin_module
 
-commands = plugin_module("sentinel.commands")
+commands = plugin_module("sentinel.agent.commands")
 config_mod = plugin_module("sentinel.config")
 engine_mod = plugin_module("sentinel.engine")
 runtime = plugin_module("sentinel.runtime")
-tools = plugin_module("sentinel.tools")
+tools = plugin_module("sentinel.agent.tools")
 
 FAST = engine_mod.EngineSettings(
     capture_interval=0.01,

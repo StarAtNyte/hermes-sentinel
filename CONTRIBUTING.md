@@ -9,7 +9,7 @@ uv sync --group dev
 bash scripts/check.sh
 ```
 
-`check.sh` runs `ruff check`, `ruff format --check`, the plugin tests (`hermes-sentinel/tests`), the tool tests (`tests_tools`) and `scripts/rule_lint.py`, then prints a non-failing `scripts/structure_lint.py --report` summary. Format with `uv run --group dev ruff format .`. New or touched code must meet the Code standard in `CLAUDE.md`; `sources/`, `storage/` and `rules/` (and their tests) must stay free of structure_lint findings. The modules still to be split are listed under "Remaining refactor" in `hermes-sentinel/docs/ARCHITECTURE.md`. Line length is 100; ruff rules E, F, W, I, B, UP, SIM. `check.sh` must pass before a change is merged.
+`check.sh` runs `ruff check`, `ruff format --check`, the plugin tests (`hermes-sentinel/tests`), the tool tests (`tests_tools`), `scripts/rule_lint.py`, a strict ruff pass (`ruff check --config ruff.strict.toml .`: docstrings, naming, complexity) and `scripts/structure_lint.py`. The last two fail on any finding, and CI runs the same steps. Format with `uv run --group dev ruff format .`. All code meets the Code standard in `CLAUDE.md`: modules at most 400 lines, classes 250, functions 40, nesting 3, at most 8 modules per package, docstrings and type hints on public names, `__init__.py` files that only re-export. Line length is 100; the base ruff rules are E, F, W, I, B, UP, SIM, and the strict pass adds N, D, C901, RET and RSE. `check.sh` must pass before a change is merged.
 
 ## No real Hermes in tests or checks
 

@@ -153,6 +153,12 @@ def test_register_is_repeatable_on_a_fresh_ctx(registered):
         again.close()
 
 
+def test_version_module_matches_manifest():
+    from harness.plugin_loader import plugin_module
+
+    assert plugin_module("sentinel.version").__version__ == _manifest()["version"]
+
+
 def test_manifest_basics():
     manifest = _manifest()
     assert manifest["name"] == PLUGIN_DIR.name == PLUGIN_NAME

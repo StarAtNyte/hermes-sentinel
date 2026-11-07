@@ -15,19 +15,15 @@ Nothing heavy (OpenCV, numpy, SQLite, devices) is touched before that.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-__version__ = "0.1.0"
-
-logger = logging.getLogger(__name__)
 
 
 def register(ctx: Any) -> None:
     """Plugin entry point called by Hermes."""
-    from .sentinel.commands import ARGS_HINT, SentinelCommand
+    from .sentinel.agent.commands import ARGS_HINT, SentinelCommand
+    from .sentinel.agent.tools import register_tools
     from .sentinel.runtime import Sentinel, register_aux_tasks, set_active_sentinel
-    from .sentinel.tools import register_tools
+    from .sentinel.version import __version__
 
     register_aux_tasks(ctx)
     sentinel = Sentinel(ctx)

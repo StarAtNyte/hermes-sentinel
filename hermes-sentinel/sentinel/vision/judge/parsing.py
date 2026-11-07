@@ -27,6 +27,7 @@ def clean(value: Any, limit: int) -> str:
 
 
 def parse_bool(value: Any) -> bool | None:
+    """Read a yes/no answer from a bool, 0/1 or a word such as ``"yes"``; ``None`` if unclear."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)) and value in (0, 1):
@@ -41,6 +42,7 @@ def parse_bool(value: Any) -> bool | None:
 
 
 def parse_confidence(value: Any) -> float | None:
+    """Read a 0..1 confidence from a number, percentage or high/medium/low; ``None`` if unusable."""
     if isinstance(value, bool):
         return None
     if isinstance(value, str):

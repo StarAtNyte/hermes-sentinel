@@ -89,7 +89,7 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
   compact text containing caption, confidence, event id, `MEDIA:<snapshot>` and, for
   `action=agent`, the `action_prompt`. Fallback `ctx.post_message`. Rate-limited.
   Never waits for a human (rule 12).
-- `tools.py` — agent tools (section 3). `commands.py` — `/sentinel` slash command.
+- `sentinel/agent/tools/` — agent tools (section 3), one module per tool. `sentinel/agent/commands/` — `/sentinel` slash command.
 - `dashboard/plugin_api.py` — FastAPI router for the Desktop pane.
 - `desktop/plugin.js` — pane: source tiles (latest frame, 1 fps polling), rule list with
   pause/resume, event timeline with thumbnails and correct/false-alarm buttons. SDK only.

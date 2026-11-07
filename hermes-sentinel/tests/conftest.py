@@ -75,3 +75,12 @@ def loaded_plugin(fake_ctx: FakeCtx):
     module = plugin_package()
     module.register(fake_ctx)
     yield LoadedPlugin(module=module, ctx=fake_ctx)
+
+
+@pytest.fixture
+def no_real_device_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never touch real cameras: the setup check and ``sentinel_sources`` probe through stubs."""
+    from harness.plugin_loader import plugin_module
+
+    monkeypatch.setattr(plugin_module("sentinel.sources"), "list_sources", lambda **kw: [])
+    monkeypatch.setattr(plugin_module("sentinel.agent.setup.env"), "list_sources", lambda **kw: [])

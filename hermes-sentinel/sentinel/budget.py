@@ -46,16 +46,23 @@ class UsageBackend(Protocol):
         day_cap: int | None,
         rule_id: str = "",
         now: float | None = None,
-    ) -> Any: ...
+    ) -> Any:
+        """Atomically record ``n`` calls if both caps allow; returns a result with ``allowed``."""
+        ...
 
     def usage_totals(
         self, now: float | None = None, *, rule_id: str | None = None
-    ) -> tuple[int, int]: ...
+    ) -> tuple[int, int]:
+        """Return ``(calls this hour, calls in the last 24 h)``."""
+        ...
 
 
 def parse_cap(value: Any, default: int | None) -> int | None:
-    """Coerce a config value to a cap. ``None``/missing -> ``default``; negative, non-numeric
-    or non-finite -> ``default``; values above ``MAX_CAP`` are clamped."""
+    """Coerce a config value to a cap.
+
+    ``None``/missing, negative, non-numeric and non-finite values give ``default``;
+    values above ``MAX_CAP`` are clamped.
+    """
     if value is None or isinstance(value, bool):
         return default
     if isinstance(value, str):
@@ -87,19 +94,24 @@ class BudgetStatus:
 
     @property
     def hour_remaining(self) -> int | None:
+        """Calls left this hour, or ``None`` when unlimited."""
         return None if self.hour_cap is None else max(0, self.hour_cap - self.hour_used)
 
     @property
     def day_remaining(self) -> int | None:
+        """Calls left in the 24 h window, or ``None`` when unlimited."""
         return None if self.day_cap is None else max(0, self.day_cap - self.day_used)
 
     def to_dict(self) -> dict[str, Any]:
+        """Plain-dict form including the remaining counts."""
         out = asdict(self)
         out["hour_remaining"] = self.hour_remaining
         out["day_remaining"] = self.day_remaining
         return out
 
     def describe(self) -> str:
+        """One human-readable sentence about usage."""
+
         def part(used: int, cap: int | None, label: str) -> str:
             return f"{used}/{'unlimited' if cap is None else cap} {label}"
 
@@ -127,6 +139,7 @@ class Budget:
         per_day: int | None = DEFAULT_PER_DAY,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        """Create a budget over ``backend`` with optional hourly and daily caps."""
         self._backend = backend
         self._clock = clock
         self._lock = threading.Lock()
@@ -138,10 +151,12 @@ class Budget:
 
     @property
     def per_hour(self) -> int | None:
+        """The hourly cap, or ``None`` when unlimited."""
         return self._per_hour
 
     @property
     def per_day(self) -> int | None:
+        """The daily cap, or ``None`` when unlimited."""
         return self._per_day
 
     def set_caps(self, *, per_hour: int | None, per_day: int | None) -> None:
@@ -170,6 +185,7 @@ class Budget:
         return allowed
 
     def status(self) -> BudgetStatus:
+        """Current usage against the caps."""
         now = self._clock()
         hour_used, day_used = self._backend.usage_totals(now)
         with self._lock:

@@ -113,21 +113,25 @@ class Judge:
 
         Failures come back as a verdict whose ``error`` is set.
         """
-        start = self._clock()
-
-        def elapsed() -> float:
-            return max(0.0, self._clock() - start)
-
         if not isinstance(question, str) or not question.strip():
             return Verdict(None, error="rule has no question")
+        start = self._clock()
         template = MOTION_INSTRUCTIONS if len(sequence) >= 2 else JUDGE_INSTRUCTIONS
         try:
             blocks = self.build_input(frame, roi=roi, examples=examples, sequence=sequence)
         except Exception as exc:  # noqa: BLE001
             return Verdict(None, error=f"bad frame: {error_text(exc)}")
+        return self._ask(template.format(question=clean(question, 500)), blocks, rule_id, start)
+
+    def _ask(self, instructions: str, blocks: list[Any], rule_id: str, start: float) -> Verdict:
+        """Send one verdict request and parse the reply; failures become an error verdict."""
+
+        def elapsed() -> float:
+            return max(0.0, self._clock() - start)
+
         try:
             result = self._client().complete_structured(
-                instructions=template.format(question=clean(question, 500)),
+                instructions=instructions,
                 input=blocks,
                 json_schema=VERDICT_SCHEMA,
                 schema_name="sentinel_verdict",

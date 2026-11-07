@@ -4,7 +4,7 @@ Aim to have the PR open by Mon 2026-11-10 evening. The Typeform is allowed as so
 
 ## 1. Freeze the code (Mon 2026-11-10)
 1. Merge the api, ui and kit work. `bash scripts/check.sh` passes (ruff, pytest, rule_lint).
-2. Re-check `plugin.yaml` against `register(ctx)`: `provides_tools` lists the 9 tools, `requires_hermes: ">=0.22.5"`, `version: "0.1.0"` (also `__version__` in `__init__.py`, CHANGELOG, entry).
+2. Re-check `plugin.yaml` against `register(ctx)`: `provides_tools` lists the 9 tools, `requires_hermes: ">=0.22.5"`, `version: "0.1.0"` (also `__version__` in `sentinel/version.py`, CHANGELOG, entry).
 3. README: remove "There is no Desktop pane in this release" and "Desktop UI pane: not included" (the pane now exists); document the pane and add screenshots. Confirm the Disclosure section mentions the dashboard API.
 4. Add the screenshots at `hermes-sentinel/docs/screenshots/` (alert-telegram.png, desktop-pane.png, sentinel-status.png; PNG/JPEG only, text-sized, no faces or private rooms). Reference them in the README with relative paths.
 5. Confirm no `__pycache__`, `.pyc`, binaries or archives are tracked: `git ls-files | grep -E '\.(pyc|pyo|so|dll|dylib|exe|wasm|zip|tar|gz)$'` prints nothing.
