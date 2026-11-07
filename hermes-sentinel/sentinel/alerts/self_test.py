@@ -41,6 +41,11 @@ def format_delivery_test(result: DeliveryTestResult) -> str:
             f"Delivery test: delivered (route {result.via}). Hermes accepted the message and "
             "the agent should answer 'ok' shortly; alerts can reach this chat."
         )
+    if result.via == "throttled":
+        return (
+            "Delivery test: already tested recently - not sending another. "
+            "Wait a minute, or check the earlier result."
+        )
     if result.detail.startswith("this chat has no known route"):
         return f"Delivery test: not sent - {result.detail}."
     return (

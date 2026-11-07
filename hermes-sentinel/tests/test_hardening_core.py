@@ -4,6 +4,7 @@ config floors, delayed boot and context propagation."""
 from __future__ import annotations
 
 import contextvars
+import dataclasses
 import threading
 import time
 from collections import deque
@@ -287,6 +288,26 @@ def test_default_gate_stretches_idle_tick_for_trigger_rules(h):
     assert h.engine._default_gate(cond)._config.idle_check_seconds == 300.0
     h.engine.config = config_mod.SentinelConfig(idle_check_seconds=0.0)
     assert h.engine._default_gate(trig)._config.idle_check_seconds == 0.0
+
+
+def test_only_motion_rules_get_a_recent_frames_buffer(h):
+    still = rules.RuleSpec(question="q?", source="cam", id="s").validate()
+    moving = rules.RuleSpec(question="q?", source="cam", id="m", motion=True).validate()
+    assert h.engine._default_gate(still)._config.recent_frames == 0
+    assert h.engine._default_gate(moving)._config.recent_frames == 3
+    gate = h.engine._default_gate(still)
+    gate.process(np.zeros((32, 32, 3), np.uint8), 1.0)
+    gate.process(np.ones((32, 32, 3), np.uint8), 3.0)
+    assert gate.recent_frames() == []
+
+
+def test_editing_motion_rebuilds_the_gate(h):
+    spec = h.add()
+    h.step("quiet")
+    rt = h.engine._rules[spec.id]
+    assert rt.gate is not None
+    h.engine.update_rule(dataclasses.replace(spec, motion=True).validate())
+    assert rt.gate is None
 
 
 def test_judge_error_notice_rearms_only_after_sustained_success(h):

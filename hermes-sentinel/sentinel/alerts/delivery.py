@@ -15,6 +15,8 @@ from .routing import LOCAL_SURFACES, ROUTE_KEYS, clean_value, is_chat_origin
 
 logger = logging.getLogger(__name__)
 
+#: Least time between two delivery self-tests (each one starts an agent turn).
+TEST_MIN_INTERVAL_SECONDS = 60.0
 _MAX_TRACKED_RULES = 4096
 _FORGET_RULES = 1024
 
@@ -56,6 +58,7 @@ class Alerter:
         self._notices = HourlyWindow(notices_per_hour)
         self._last_by_rule: dict[str, float] = {}
         self._suppressed: dict[str, int] = {}
+        self._last_test: float | None = None
         self.sent = 0
         self.suppressed_total = 0
         self.failed = 0
@@ -148,10 +151,18 @@ class Alerter:
             return self._verified
 
     def send_test(self, text: str, origin: Mapping[str, Any] | None) -> Delivery:
-        """Send one self-test message to ``origin`` (no rate limit, not counted in stats).
+        """Send one self-test message to ``origin`` (not counted in stats).
 
-        Updates the sticky blocked flag like a real alert, and the verified flag.
+        At most one test per ``TEST_MIN_INTERVAL_SECONDS``; a repeat inside the interval sends
+        nothing and returns ``Delivery(False, "throttled", ...)``. Otherwise updates the sticky
+        blocked flag like a real alert, and the verified flag.
         """
+        now = self._clock()
+        with self._lock:
+            last = self._last_test
+            if last is not None and 0 <= now - last < TEST_MIN_INTERVAL_SECONDS:
+                return Delivery(False, "throttled", "already tested recently")
+            self._last_test = now
         result = self._deliver(text, origin)
         with self._lock:
             self._verified = result.ok

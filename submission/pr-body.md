@@ -35,7 +35,7 @@ Rule modes: `trigger`, `condition` (true for N seconds), `absence` (expected thi
 | `plugin_db` / plugin data dir | SQLite store and snapshots under `plugin-data/hermes-sentinel/` |
 | Dashboard / Desktop pane | `dashboard/manifest.json` + `dashboard/plugin_api.py` (FastAPI router at `/api/plugins/hermes-sentinel/`) and `desktop/plugin.js` (Desktop Plugin SDK + React only): live source tiles (latest frame, about 1 fps), rules with pause/resume/delete, a Watch form (free-text source, optional recipe), event timeline with snapshots and correct / false-alarm buttons, a status-bar chip and a budget/delivery banner. It polls over `ctx.rest` (no websocket) and fetches images as `?encoding=data_url` JSON; it reuses the same runtime, store and engine objects as the tools. The pane is enabled by default (no `defaultEnabled: false`); it shows an empty state and 503 writes if the dashboard process that serves `plugin_api.py` is not the process that runs the agent, so it must be hosted by that process (see README) |
 
-No hooks, no middleware, no `requires_env`. `capabilities.provides_tools` in the entry lists the nine tools above and matches `plugin.yaml` and `register(ctx)` (asserted by `tests/test_register.py`).
+No hooks, no middleware, no `requires_env` in `plugin.yaml`, so the entry declares `requires_env: []`. The four optional `SENTINEL_STREAM_URL_*` secret slots are `config_schema` fields of `type: secret` (a separate declaration from `requires_env` in the catalog guide; they are optional, none is needed to load the plugin). `capabilities.provides_tools` in the entry lists the nine tools above and matches `plugin.yaml` and `register(ctx)` (asserted by `tests/test_register.py`).
 
 ### Disclosures (rule 13)
 

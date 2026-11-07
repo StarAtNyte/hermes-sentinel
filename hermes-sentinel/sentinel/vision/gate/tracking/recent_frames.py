@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .config import GateConfig
+from ..config import GateConfig
 
 __all__ = ["RecentFrames", "TimedFrame"]
 

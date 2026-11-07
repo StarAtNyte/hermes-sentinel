@@ -495,10 +495,14 @@ class Engine:
         if spec.mode == "trigger" and idle > 0:
             idle = max(idle, TRIGGER_IDLE_MIN_SECONDS)
         return ChangeGate(
-            GateConfig(idle_check_seconds=idle),
+            GateConfig(idle_check_seconds=idle, recent_frames=self._recent_frames_for(spec)),
             roi=spec.roi,
             clock=self._clock,
         )
+
+    def _recent_frames_for(self, spec: RuleSpec) -> int:
+        """Frames a rule's gate keeps: only motion rules read them, so the others keep none."""
+        return max(0, self._policy.motion_frames) if spec.motion else 0
 
     def _new_runtime(self, spec: RuleSpec) -> _RuleRuntime:
         return _RuleRuntime(
@@ -540,6 +544,8 @@ class Engine:
                     rt.source_key = new_key
                     rt.gate = None
                     rt.machine.reset()
+                if old.motion != spec.motion:
+                    rt.gate = None  # rebuilt on the next frame with the right frame buffer
                 if old.enabled and not spec.enabled:
                     rt.machine.reset()
             if spec.enabled:
@@ -1047,9 +1053,10 @@ class Engine:
                 total -= len(dropped)
         return data
 
-    def _reserve_budget(self, spec: RuleSpec) -> bool:
+    def _reserve_budget(self, spec: RuleSpec, rule_id: str | None = None) -> bool:
+        """Consume one vision call (charged to ``rule_id`` or the rule); False when refused."""
         try:
-            allowed = self.budget.try_consume(rule_id=spec.id)
+            allowed = self.budget.try_consume(rule_id=rule_id or spec.id)
         except Exception as exc:  # noqa: BLE001 - a store error must not crash judging
             logger.warning("sentinel: budget check failed: %s", exc)
             return False
@@ -1097,12 +1104,17 @@ class Engine:
             if outcome.budget_refused:
                 entry.rt.budget_skips += 1
             elif outcome.verdict is not None:
-                self._apply_verdict(entry.rt, entry.job, outcome.verdict)
+                self._apply_verdict(entry.rt, entry.job, outcome.verdict, outcome.from_fallback)
 
-    def _apply_verdict(self, rt: _RuleRuntime, job: _Job, verdict: Verdict) -> None:
+    def _apply_verdict(
+        self, rt: _RuleRuntime, job: _Job, verdict: Verdict, from_fallback: bool = False
+    ) -> None:
         """Run the optional second opinion, record the verdict and advance the rule."""
         spec = rt.spec
-        verdict = self._second_opinion.review(spec, rt.machine.state, job.frame, job.bbox, verdict)
+        if not from_fallback:
+            verdict = self._second_opinion.review(
+                spec, rt.machine.state, job.frame, job.bbox, verdict
+            )
         if self._stop.is_set():
             return
         now = self._clock()

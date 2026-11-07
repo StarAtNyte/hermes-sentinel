@@ -29,8 +29,14 @@ class JudgeItem:
 
 @dataclass(frozen=True)
 class Outcome:
-    """What happened to one item: a verdict, a budget refusal, or neither (stopped)."""
+    """What happened to one item: a verdict, a budget refusal, or neither (stopped).
+
+    ``from_fallback`` marks a verdict obtained after a batch call failed to answer the rule;
+    such rules get no second opinion, which keeps a frame at no more than one call per
+    rule plus the batch call.
+    """
 
     item: JudgeItem
     verdict: Verdict | None = None
     budget_refused: bool = False
+    from_fallback: bool = False  # judged alone because a batch call could not answer it

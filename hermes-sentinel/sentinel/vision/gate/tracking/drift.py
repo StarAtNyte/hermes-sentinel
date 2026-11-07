@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from .config import GateConfig
-from .geometry import BBox, Roi, bbox_from_mask, bbox_iou, roi_slices
-from .ops import ImageOps
-from .scoring import FrameScorer
-from .types import GateState, Reference
+from ..config import GateConfig
+from ..geometry import BBox, Roi, bbox_from_mask, bbox_iou, roi_slices
+from ..ops import ImageOps
+from ..scoring import FrameScorer
+from ..types import GateState, Reference
 
 __all__ = ["DriftDetector"]
 

@@ -72,6 +72,8 @@ class SecondOpinion:
         policy = self._policy
         if not policy.second_opinion_enabled or not verdict.ok or state in _NO_EFFECT_STATES:
             return False
+        if spec.motion:
+            return False  # one still crop cannot show movement, so it would overturn real hits
         if spec.confidence_threshold >= policy.band_high:
             return False  # every hit of this rule is already above the band
         if not policy.band_low <= verdict.confidence < policy.band_high:

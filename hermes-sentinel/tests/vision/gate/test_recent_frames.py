@@ -7,7 +7,7 @@ import pytest
 from harness.plugin_loader import plugin_module
 
 gate_mod = plugin_module("sentinel.vision.gate")
-buffer_mod = plugin_module("sentinel.vision.gate.recent_frames")
+buffer_mod = plugin_module("sentinel.vision.gate.tracking.recent_frames")
 ChangeGate = gate_mod.ChangeGate
 GateConfig = gate_mod.GateConfig
 RecentFrames = buffer_mod.RecentFrames

@@ -102,6 +102,29 @@ def test_scopeless_thread_without_cache_waits_instead_of_failing(no_scope):
     assert issubclass(src.SecretScopeUnavailable, src.SourceNotReady)
 
 
+def test_two_scopes_never_share_a_cached_secret(shim_binding, monkeypatch):
+    scope_module = sys.modules["agent.secret_scope"]
+    home = {"value": "/profiles/a"}
+    monkeypatch.setattr(
+        scope_module, "current_secret_scope_home", lambda: home["value"], raising=False
+    )
+    shim_binding.secrets["A"] = "url-of-a"
+    secrets_mod.get_secret("A")
+    home["value"] = "/profiles/b"
+    shim_binding.secrets["A"] = "url-of-b"
+    secrets_mod.get_secret("A")
+
+    monkeypatch.setattr(
+        scope_module,
+        "get_secret",
+        lambda name, default=None: (_ for _ in ()).throw(UnscopedSecretError(name)),
+    )
+    with pytest.raises(src.SecretScopeUnavailable):
+        secrets_mod.get_secret("A")  # two scopes hold "A": a scope-less thread must not guess
+    assert secrets_mod.SECRET_CACHE.recall("A", scope="/profiles/a") == "url-of-a"
+    assert secrets_mod.SECRET_CACHE.recall("A", scope="/profiles/b") == "url-of-b"
+
+
 def test_other_errors_are_source_errors_without_details(shim_binding, monkeypatch):
     def boom(name, default=None):
         raise ValueError("hunter2 leaked in message")

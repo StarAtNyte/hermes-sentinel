@@ -39,4 +39,4 @@ capabilities:
     - sentinel_setup_check
   provides_hooks: []
   provides_middleware: []
-  requires_env: []
+  requires_env: []   # matches plugin.yaml (none). The optional SENTINEL_STREAM_URL_1..4 slots are config_schema secrets, not requires_env.

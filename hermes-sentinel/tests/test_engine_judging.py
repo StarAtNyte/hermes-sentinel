@@ -91,6 +91,41 @@ def test_unusable_batch_reply_falls_back_to_separate_calls_all_budgeted(make):
     assert rig.store.count_events(rule_id="a") == 1
 
 
+def test_worst_case_calls_for_unusable_batch(make):
+    rig = make(batch_max_rules=4)
+    for rule_id in "abcd":
+        rig.add(rule_id)
+    rig.stage(*"abcd", bbox=BBOX)
+    rig.batch_reply = "garbage"
+    rig.answers = {rule_id: (True, 0.7) for rule_id in "abcd"}
+    rig.verify_answer = (False, 0.9)
+    rig.round()
+    # one batch call plus one single per rule; rules judged in a fallback get no second opinion
+    assert len(rig.purposes()) == 5
+    assert not [p for p in rig.purposes() if p.startswith("sentinel:verify:")]
+    assert rig.used() == 5
+
+
+def test_batch_spend_is_charged_to_a_shared_id_not_the_first_rule(make):
+    rig = make()
+    rig.add("a")
+    rig.add("b")
+    rig.stage("a", "b")
+    rig.round()
+    assert rig.used() == 1
+    assert rig.store.usage_totals(rule_id="batch") == (1, 1)
+    assert rig.store.usage_totals(rule_id="a") == (0, 0)
+    assert rig.store.usage_totals(rule_id="b") == (0, 0)
+
+
+def test_exhausted_notice_for_a_batch_goes_to_the_first_rules_origin(make):
+    rig = make(per_hour=0)
+    three_rules(rig)
+    rig.round()
+    notices = [m for m in rig.ctx.injected if "budget" in m.content.lower()]
+    assert len(notices) == 1
+
+
 def test_unparseable_text_also_falls_back(make):
     rig = make()
     three_rules(rig)
@@ -306,6 +341,17 @@ def test_verdicts_that_would_not_count_are_not_re_checked(make):
     rig.stage("a", "n")
     rig.round()
     assert "sentinel:verify:a" not in rig.purposes() and "sentinel:verify:n" not in rig.purposes()
+
+
+def test_motion_rules_never_get_a_second_opinion(make):
+    rig = make()
+    rig.add("m", motion=True)
+    rig.answers = {"m": (True, 0.7)}
+    rig.verify_answer = (False, 0.9)
+    rig.stage("m", bbox=BBOX)
+    rig.round()
+    assert rig.purposes() == ["sentinel:m"]
+    assert rig.store.count_events(rule_id="m") == 1
 
 
 def test_absence_rules_check_their_borderline_negatives(make):

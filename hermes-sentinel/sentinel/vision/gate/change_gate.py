@@ -14,11 +14,11 @@ import numpy as np
 
 from . import ops as _ops
 from .config import GateConfig
-from .drift import DriftDetector
+from .frames import preprocess_frame, validate_frame
 from .geometry import Roi, bbox_from_mask, normalize_roi, roi_slices
 from .ops import ImageOps
-from .recent_frames import RecentFrames, TimedFrame
 from .scoring import FrameScorer
+from .tracking import DriftDetector, RecentFrames, TimedFrame
 from .types import GateResult, GateState, Reference
 
 __all__ = ["ChangeGate"]
@@ -26,8 +26,6 @@ __all__ = ["ChangeGate"]
 logger = logging.getLogger(__name__)
 
 Backend = Literal["auto", "numpy", "cv2"]
-
-_NORM_LEVEL = 128.0  # frames are rescaled so their mean sits here
 
 
 class ChangeGate:
@@ -153,7 +151,7 @@ class ChangeGate:
         Raises:
             ValueError: the frame is not a non-empty 2-D/3-D numeric array.
         """
-        arr = self._validate(frame)
+        arr = validate_frame(frame)
         now = float(self._clock() if ts is None else ts)
         if not math.isfinite(now):
             raise ValueError(f"timestamp must be finite, got {ts!r}")
@@ -167,18 +165,6 @@ class ChangeGate:
             st.stats["ticks"] += int(result.tick)
             st.stats["rebaselines"] += int(result.rebaselined)
             return result
-
-    @staticmethod
-    def _validate(frame: Any) -> np.ndarray:
-        if not isinstance(frame, np.ndarray):
-            raise ValueError(f"frame must be a numpy array, got {type(frame).__name__}")
-        if frame.ndim not in (2, 3) or frame.size == 0 or min(frame.shape[:2]) < 2:
-            raise ValueError(f"frame must be a non-empty HxW[xC] image, got shape {frame.shape}")
-        if frame.ndim == 3 and frame.shape[2] not in (1, 3, 4):
-            raise ValueError(f"frame must have 1, 3 or 4 channels, got {frame.shape[2]}")
-        if not (np.issubdtype(frame.dtype, np.integer) or np.issubdtype(frame.dtype, np.floating)):
-            raise ValueError(f"frame dtype must be numeric, got {frame.dtype}")
-        return frame
 
     def _tick_due(self, now: float) -> bool:
         st, cfg = self._state, self._config
@@ -194,25 +180,12 @@ class ChangeGate:
             return False
         return now - st.last_tick >= cfg.idle_check_seconds
 
-    def _preprocess(self, frame: np.ndarray) -> np.ndarray:
-        cfg, ops = self._config, self._ops
-        gray = ops.to_gray(frame)
-        if np.issubdtype(frame.dtype, np.integer) and frame.dtype.itemsize > 1:
-            # 16-bit sources: scale into the 8-bit range the thresholds assume.
-            gray = gray * np.float32(255.0 / np.iinfo(frame.dtype).max)
-        small = ops.downscale(gray, cfg.max_width)
-        small = ops.blur(small, cfg.blur_sigma)
-        mean = float(small.mean())
-        # Brightness normalisation: rejects global flicker/drift before any comparison.
-        scale = _NORM_LEVEL / mean if mean > 1.0 else 1.0
-        return np.ascontiguousarray(small * np.float32(scale), dtype=np.float32)
-
     def _process_locked(self, frame: np.ndarray, now: float) -> GateResult:
         st = self._state
         tick = self._tick_due(now)
         if tick:
             st.last_tick = now
-        img = self._preprocess(frame)
+        img = preprocess_frame(frame, self._ops, self._config)
         cur = self._scorer.reference(img, self._config.window)
         shape = frame.shape[:2]
         if st.prev is None or st.background is None or st.shape != shape:

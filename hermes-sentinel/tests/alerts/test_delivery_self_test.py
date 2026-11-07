@@ -15,10 +15,10 @@ CHAT = {"platform": "telegram", "chat_id": "42", "session_key": "agent:main:tele
 def make_alerter():
     made = []
 
-    def build(**ctx_kwargs):
+    def build(clock=None, **ctx_kwargs):
         ctx = FakeCtx(**ctx_kwargs)
         made.append(ctx)
-        return ctx, alerts.Alerter(ctx)
+        return ctx, alerts.Alerter(ctx, **({"clock": clock} if clock else {}))
 
     yield build
     for ctx in made:
@@ -45,9 +45,13 @@ def test_refused_test_sets_sticky_blocked_and_reports_yaml(make_alerter):
 
 
 def test_later_success_clears_blocked(make_alerter):
-    ctx, alerter = make_alerter(session_surface="telegram", gateway_injection_allowed=False)
+    now = [0.0]
+    ctx, alerter = make_alerter(
+        clock=lambda: now[0], session_surface="telegram", gateway_injection_allowed=False
+    )
     alerts.run_delivery_test(alerter, CHAT)
     ctx.gateway_injection_allowed = True
+    now[0] += 61.0
     result = alerts.run_delivery_test(alerter, CHAT)
     assert result.delivered and alerter.delivery_blocked() is None
     assert "delivered" in alerts.format_delivery_test(result)

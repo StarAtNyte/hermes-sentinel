@@ -98,8 +98,21 @@ def test_setup_test_delivery_blocked_shows_yaml_and_sticks(rig):
     assert rig.sentinel.alerter.delivery_blocked()
     assert "Alert delivery is blocked" in handler(rig)("status", session_key="k")
     rig.ctx.gateway_injection_allowed = True
+    rig.clock.advance(61.0)
     assert "delivered" in handler(rig)("setup --test-delivery", session_key="k")
     assert rig.sentinel.alerter.delivery_blocked() is None
+
+
+def test_delivery_test_is_throttled_to_one_a_minute(rig):
+    first = rig.call("sentinel_setup_check", test_delivery=True)
+    assert first["delivery_test"]["delivered"] is True
+    again = rig.call("sentinel_setup_check", test_delivery=True)
+    assert again["delivery_test"]["delivered"] is False
+    assert "already tested recently" in again["report"]
+    assert len(rig.ctx.injected) == 1
+    rig.clock.advance(61.0)
+    assert rig.call("sentinel_setup_check", test_delivery=True)["delivery_test"]["delivered"]
+    assert len(rig.ctx.injected) == 2
 
 
 def test_setup_check_tool_test_delivery_is_opt_in(rig):

@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from typing import Any
 
-from ..rules import RuleSpec
 from ..vision.judge import BatchQuestion, Verdict
 from .items import JudgeItem, Outcome
 from .policy import JudgingPolicy
 
-__all__ = ["JudgingPipeline"]
+__all__ = ["BATCH_USAGE_ID", "JudgingPipeline"]
+
+#: Usage-table id that batched calls are charged to.
+BATCH_USAGE_ID = "batch"
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +35,10 @@ class JudgingPipeline:
         self,
         judge: Any,
         policy: JudgingPolicy,
-        reserve: Callable[[RuleSpec], bool],
+        reserve: Callable[..., bool],
         stopped: Callable[[], bool],
     ) -> None:
-        """``reserve`` consumes one vision call for a rule; ``stopped`` is the shutdown flag."""
+        """``reserve(spec, rule_id=...)`` spends one vision call; ``stopped`` is the stop flag."""
         self._judge = judge
         self._policy = policy
         self._reserve = reserve
@@ -44,13 +47,27 @@ class JudgingPipeline:
     def run(self, items: Sequence[JudgeItem]) -> list[Outcome]:
         """One outcome per item, in the same order. Never raises."""
         done: dict[str, Outcome] = {}
+        attempted: set[str] = set()
         cap = self._policy.batch_cap
         batchable = [item for item in items if item.batchable]
         if cap > 1 and len(batchable) >= 2:
             for chunk in _chunks(batchable, cap):
                 if len(chunk) >= 2:
+                    attempted.update(item.spec.id for item in chunk)
                     done.update(self._run_batch(chunk))
-        return [done[item.spec.id] if item.spec.id in done else self.single(item) for item in items]
+        return [self._outcome_for(item, done, attempted) for item in items]
+
+    def _outcome_for(
+        self, item: JudgeItem, done: dict[str, Outcome], attempted: set[str]
+    ) -> Outcome:
+        """The batch's outcome for ``item``, else its own call (flagged when a batch missed it)."""
+        outcome = done.get(item.spec.id)
+        if outcome is not None:
+            return outcome
+        single = self.single(item)
+        if item.spec.id not in attempted:
+            return single
+        return replace(single, from_fallback=True)
 
     def single(self, item: JudgeItem) -> Outcome:
         """Judge one item with its own call (budget reserved first)."""
@@ -73,7 +90,9 @@ class JudgingPipeline:
         """One call for the whole chunk; unanswered rules fall back to their own calls."""
         if self._stopped():
             return {item.spec.id: Outcome(item) for item in chunk}
-        if not self._reserve(chunk[0].spec):
+        # Charged to a shared pseudo-rule so no single rule's usage is inflated; the exhausted
+        # notice still goes to the first rule's origin, which is where the frame came from.
+        if not self._reserve(chunk[0].spec, rule_id=BATCH_USAGE_ID):
             return {item.spec.id: Outcome(item, budget_refused=True) for item in chunk}
         questions = [BatchQuestion(i.spec.id, i.spec.question, i.spec.roi) for i in chunk]
         reply = self._judge.judge_batch(chunk[0].frame, questions)
