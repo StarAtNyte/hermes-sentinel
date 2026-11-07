@@ -16,9 +16,8 @@ docs_url: https://github.com/StarAtNyte/hermes-sentinel/blob/<FILL_40_CHAR_SHA>/
 platforms: []
 readme: true
 screenshots:
-  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/alert-telegram.png
-  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/desktop-pane.png
-  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/screenshots/sentinel-status.png
+  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/images/live-test-alert.jpg
+  - https://raw.githubusercontent.com/StarAtNyte/hermes-sentinel/<FILL_40_CHAR_SHA>/hermes-sentinel/docs/images/pane-preview-wide.png
 known_issues:
   - "Outside the classic CLI, alerts are only delivered after you add plugins.entries.hermes-sentinel.allow_gateway_injection: true to config.yaml; /sentinel status shows the exact snippet when delivery is refused."
   - "Needs a vision-capable model routed to the sentinel_vision auxiliary task, otherwise judging fails (the gate keeps running)."
