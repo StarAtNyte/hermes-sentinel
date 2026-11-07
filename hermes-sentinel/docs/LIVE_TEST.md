@@ -123,6 +123,22 @@ The frame saved with the event:
 | End of video handled | one notice, watcher stopped |
 | Rule state | `[firing]`, last event #1 |
 
+## Desktop pane preview (stub host)
+
+The real Desktop app was not run (it is an Electron app that needs a built desktop bundle and a display session), so none of this is real-Desktop verification. Instead `desktop/plugin.js` was bundled with real React 19 against a stand-in for `@hermes/plugin-sdk` and rendered in headless Chrome, with its REST calls proxied to the live isolated Hermes backend from this test. The stub host supplies plain CSS for `Badge`, `Button` and `CopyButton` and a few theme variables, so colours and spacing of those parts differ from the real app. The engine was not running, so the source tile shows its offline state (the frame request returns 404, which is the one console error).
+
+Preview harness: `tests_tools/pane_preview/` (`node serve.mjs --token-file <path>`, then open http://127.0.0.1:8765/).
+
+Wide (1280 px):
+
+![Sentinel pane, 1280 px, stub host](images/pane-preview-wide.png)
+
+Narrow (700 px):
+
+![Sentinel pane, 700 px, stub host](images/pane-preview-narrow.png)
+
+Bugs this found and fixed: React key warnings (keys were passed inside spread props), the source grid never applied because a later CSS rule overrode it (one tile stretched to full width), long source paths overflowing the tile title, setup rows without spacing, and a green "not running" badge on a rule that was not watching.
+
 ## Quality gate on the same commit
 
 `scripts/check.sh --with-hermes` passes: `hermes plugins validate` reports the security scan as safe, `hermes plugins doctor` is ok, with 1430 plugin tests and 195 tool tests. An earlier validate run caught the install scanner flagging a phrase in the README; that is fixed.

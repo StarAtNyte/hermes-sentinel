@@ -406,8 +406,15 @@ export function createController(ctx) {
 // 3. UI components
 // ---------------------------------------------------------------------------------------
 
-const h = (type, props, ...children) => jsxs(type, { ...props, children })
-const el = (type, props) => jsx(type, props || {})
+// React wants `key` as the third jsx() argument, never inside the spread props object.
+const h = (type, props, ...children) => {
+  const { key, ...rest } = props || {}
+  return jsxs(type, { ...rest, children }, key)
+}
+const el = (type, props) => {
+  const { key, ...rest } = props || {}
+  return jsx(type, rest, key)
+}
 
 // Plugin layout only; every colour is a theme variable so it follows dark/light/skins.
 const CSS = `
@@ -425,15 +432,16 @@ const CSS = `
 .hs-meter>span{display:block;height:100%;background:var(--ui-accent)}
 .hs-meters{display:flex;gap:16px;flex-wrap:wrap}
 .hs-meter-box{min-width:140px;flex:1}
-.hs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .hs-tile{display:flex;flex-direction:column;gap:6px}
 .hs-frame{position:relative;aspect-ratio:16/9;border-radius:4px;overflow:hidden;background:var(--ui-bg-quaternary);display:flex;align-items:center;justify-content:center;color:var(--ui-text-tertiary)}
 .hs-frame img{width:100%;height:100%;object-fit:cover;display:block}
 .hs-frame[data-offline=true] img{opacity:.35}
 .hs-offline{position:absolute;top:6px;left:6px}
 .hs-list{display:flex;flex-direction:column;gap:8px;list-style:none;margin:0;padding:0}
+.hs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,340px));gap:10px}
 .hs-rule{display:flex;flex-direction:column;gap:6px}
 .hs-text{overflow-wrap:anywhere}
+.hs-clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-form{display:flex;flex-direction:column;gap:8px}
 .hs-field{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1}
 .hs-field label{font-size:11px;color:var(--ui-text-tertiary)}
@@ -494,7 +502,7 @@ export function setupIssues(setup) {
 function SetupCard({ setup, busy, controller }) {
   const issues = setupIssues(setup)
   if (!issues.length) return null
-  return h('section', { className: 'hs-card', 'aria-label': 'Setup' },
+  return h('section', { className: 'hs-card hs-form', 'aria-label': 'Setup' },
     h('div', { className: 'hs-row' },
       el('h2', { className: 'hs-h2 hs-grow', style: { margin: 0 }, children: 'Setup' }),
       el(Button, {
@@ -538,7 +546,7 @@ function SourceTile({ source, frame, now }) {
   const showImg = frame && frame.src
   return h('li', { className: 'hs-card hs-tile' },
     h('div', { className: 'hs-row' },
-      el('strong', { className: 'hs-grow hs-text', children: source.label || source.key }),
+      el('strong', { className: 'hs-grow hs-clip', title: source.label || source.key, children: source.label || source.key }),
       el(Badge, { variant: 'outline', size: 'xs', children: source.kind })),
     h('div', {
       className: 'hs-frame', 'data-offline': String(!online), role: 'img', tabIndex: 0,
@@ -587,7 +595,7 @@ function RuleRow({ rule, controller, busy }) {
       el('span', { className: 'hs-grow hs-text', children: rule.text }),
       el(Badge, { variant: 'outline', children: rule.mode }),
       paused || shortStatus(rule.status)
-        ? el(Badge, { variant: paused ? 'muted' : 'success', children: paused ? 'paused' : rule.status })
+        ? el(Badge, { variant: !paused && rule.status === 'watching' ? 'success' : 'muted', children: paused ? 'paused' : rule.status })
         : null),
     !paused && !shortStatus(rule.status)
       ? el('div', { className: 'hs-muted hs-text', children: String(rule.status) }) : null,
