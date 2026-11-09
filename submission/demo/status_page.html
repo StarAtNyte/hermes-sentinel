@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme Status</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #f4f6f8; color: #1b2430; }
+  header { padding: 28px 48px; background: #fff; border-bottom: 1px solid #dde3ea; font-size: 28px; font-weight: 700; }
+  .banner { margin: 48px; padding: 56px; border-radius: 16px; font-size: 56px; font-weight: 800; text-align: center; color: #fff; background: #1f9d55; }
+  .banner.down { background: #d64545; }
+  ul { margin: 0 48px; padding: 0; list-style: none; font-size: 28px; }
+  li { display: flex; justify-content: space-between; padding: 18px 24px; background: #fff; border-bottom: 1px solid #e6ebf0; }
+  .ok { color: #1f9d55; font-weight: 700; } .bad { color: #d64545; font-weight: 700; }
+  button { display: block; margin: 40px auto; padding: 14px 28px; font-size: 20px; border-radius: 10px; border: 1px solid #c3ccd6; background: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>Acme Status</header>
+<div id="banner" class="banner">All systems operational</div>
+<ul>
+  <li>API <span id="api" class="ok">Operational</span></li>
+  <li>Dashboard <span class="ok">Operational</span></li>
+  <li>Database <span id="db" class="ok">Operational</span></li>
+</ul>
+<button id="toggle">Simulate outage</button>
+<script>
+  let down = false;
+  document.getElementById("toggle").addEventListener("click", () => {
+    down = !down;
+    const banner = document.getElementById("banner");
+    banner.textContent = down ? "Major outage" : "All systems operational";
+    banner.className = down ? "banner down" : "banner";
+    for (const id of ["api", "db"]) {
+      const el = document.getElementById(id);
+      el.textContent = down ? "Down" : "Operational";
+      el.className = down ? "bad" : "ok";
+    }
+    document.getElementById("toggle").textContent = down ? "Restore" : "Simulate outage";
+  });
+</script>
+</body>
+</html>
