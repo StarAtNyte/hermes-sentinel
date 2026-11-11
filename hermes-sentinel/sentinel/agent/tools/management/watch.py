@@ -189,8 +189,9 @@ def _confirmation(
         f" once it has held for {saved.hold_seconds:g}s" if saved.effective_hold_seconds else ""
     )
     message = (
-        f'Watching "{saved.source}" for: "{saved.question}"{hold_text}. Checks only when '
-        f"something moves. Cap: {caps_text(context.sentinel.config)}."
+        f'Watching "{saved.source}" for: "{saved.question}"{hold_text}. The local change '
+        f"detector reduces vision checks; periodic checks may still occur. "
+        f"Cap: {caps_text(context.sentinel.config)}."
     )
     if context.sentinel.engine.standing_by:
         message += " (Another Hermes process is running the watcher; it will pick this up.)"
@@ -198,6 +199,10 @@ def _confirmation(
         " Alerts are injected into the chat, which Hermes only allows outside the classic "
         "CLI when the user has set this in config.yaml (it is off by default):\n"
         + GATEWAY_INJECTION_YAML
+    )
+    message += (
+        " Before relying on alerts, run /sentinel setup --test-delivery in this chat "
+        "and make sure sentinel_vision uses a vision-capable model."
     )
     return message + _here_hint(context, origin, kwargs) + _setup_hint(context)
 

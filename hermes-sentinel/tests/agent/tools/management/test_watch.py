@@ -15,7 +15,7 @@ def test_watch_with_recipe(rig):
     rule = out["rule"]
     assert rule["recipe"] == "desk-intruder" and rule["source"] == CAM
     assert rule["compiled_by"] == "manual"
-    assert "Checks only when something moves" in out["message"]
+    assert "periodic checks may still occur" in out["message"]
     assert "allow_gateway_injection: true" in out["message"]
     assert "'/sentinel here'" in out["message"]
     assert rig.engine.running and rig.engine.rule_ids() == [rule["rule_id"]]

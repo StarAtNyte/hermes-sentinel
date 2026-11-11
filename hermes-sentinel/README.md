@@ -2,16 +2,16 @@
 
 **Tell Hermes in plain English what to watch ("tell me if someone takes my coffee mug"). It watches a webcam, your screen or a stream, and sends you an alert with a photo when it happens.**
 
-A free local change detector looks at every frame; a vision model only sees frames that changed, under hard call caps you set. Alerts land in the chat where you asked, and you can ask later: "what happened at my desk today?".
+A local change detector reduces calls to your vision model, under hard call caps you set. Some rules also use periodic checks. Ask later: "what happened at my desk today?".
 
-## Try it in 2 minutes (no camera needed)
+## Try it (no camera needed)
 
-1. Install and enable: `hermes plugins install hermes-sentinel`, then `hermes plugins enable hermes-sentinel` (until the catalog PR is merged, see [Install](#install)).
+1. Install and enable the plugin. Until the catalog entry is merged, use the local checkout instructions under [Install](#install).
 2. Add `plugins.entries.hermes-sentinel.allow_gateway_injection: true` to `config.yaml` (needed for alerts outside the classic CLI) and route `auxiliary.sentinel_vision` to a vision-capable model ([Required setup](#required-setup)).
-3. In Hermes run `/sentinel setup`; it lists anything still missing, with the fix.
+3. In the chat where you want alerts, run `/sentinel setup --test-delivery`. It sends a test message and reports whether Hermes accepted it. Check that the test actually appears in your chat; acceptance alone does not verify photo rendering. On Telegram or Discord, send `/sentinel here` to bind the route.
 4. Put a short MP4 of a desk with a mug that is then taken away somewhere (or generate one with the script in [docs/LIVE_TEST.md](docs/LIVE_TEST.md)).
 5. Tell Hermes: `watch file:/home/me/mug.mp4 and tell me if someone takes my coffee mug` (add `?loop=true` to replay it).
-6. Within seconds of the mug leaving, the alert arrives with a snapshot. Reply `false alarm` or ask `what happened today?`.
+6. When the mug leaves, check for the alert and snapshot. Timing and accuracy depend on your model and settings. Ask `what happened today?` to query stored events.
 
 ## Verified live, and what is not
 
@@ -39,7 +39,7 @@ You:    what happened at my desk today?
 Hermes: 3 events: 09:12 mug placed, 11:40 someone sat down, 14:03 mug taken [photos]
 ```
 
-It is built for the classic CLI, messaging platforms and Hermes Desktop (which adds a Sentinel pane, see [Desktop pane](#desktop-pane)). Only the classic CLI has been tested against real Hermes so far; in it the alert turn is stored but not rendered live, so Desktop or Telegram is the intended surface.
+It is built for the classic CLI, messaging platforms and Hermes Desktop (which adds a Sentinel pane, see [Desktop pane](#desktop-pane)). Only the classic CLI has been tested against real Hermes so far; in it the alert turn was stored but not rendered live. Desktop and Telegram delivery still need live verification.
 
 ## Features
 
@@ -74,7 +74,7 @@ It is built for the classic CLI, messaging platforms and Hermes Desktop (which a
         +-- frames never leave the machine until the gate says "changed" or a tick is due
 ```
 
-Why it is cheap: the gate runs on every frame at no cost, so a quiet scene sends nothing to the model. Trigger rules do one start-up look and then wait for motion (their idle tick is stretched to at least 6 hours). A second, slow reference (the last judged frame) lets the gate notice gradual changes that its fast background would absorb. Condition and absence rules re-check on `idle_check_seconds` (default 300 s) so they notice states that do not involve motion. Rules in cooldown are not judged at all. A queue holds at most one pending job per rule and eight overall.
+Why it can be cheap: the local gate filters quiet frames before model calls. Trigger rules do a start-up look and have an idle tick of at least 6 hours. A second, slow reference (the last judged frame) lets the gate notice gradual changes that its fast background would absorb. Condition and absence rules re-check on `idle_check_seconds` (default 300 s) so they notice states that do not involve motion. Rules in cooldown are not judged at all. A queue holds at most one pending job per rule and eight overall.
 
 Why it is reliable: one noisy verdict cannot fire a rule (k-of-n, confidence threshold), one rule cannot flood you (cooldown, 20 alerts/hour overall), and a failing source or model is reported once and retried with backoff rather than repeated. Every external failure is caught; nothing blocks the agent loop.
 
