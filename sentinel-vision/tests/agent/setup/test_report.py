@@ -36,3 +36,10 @@ def test_summary_and_titles(tmp_path):
     assert s["ready"] is False and s["failed"] == 2
     assert sc.format_report(checks).splitlines()[-1].startswith("Ready: no - ")
     assert [c.to_dict()["status"] for c in checks][0] == "fail"
+
+
+def test_next_step_is_suggested_only_when_ready():
+    ready = sc.format_report([sc.Check(id="a", title="a", status="ok")])
+    blocked = sc.format_report([sc.Check(id="a", title="a", status="fail")])
+    assert "Next: tell Hermes what to watch" in ready
+    assert "Next:" not in blocked

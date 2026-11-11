@@ -13,6 +13,13 @@ A local change detector reduces calls to your vision model, under hard call caps
 5. Tell Hermes: `watch file:/home/me/mug.mp4 and tell me if someone takes my coffee mug` (add `?loop=true` to replay it).
 6. When the mug leaves, check for the alert and snapshot. Timing and accuracy depend on your model and settings. Ask `what happened today?` to query stored events.
 
+## 60-second demo: watch your build page
+
+1. Open your CI or test dashboard on one monitor.
+2. Tell Hermes: `watch screen:1 and tell me when the page shows a red "Build failed" banner` (add `@x,y,w,h` to watch only part of the screen, for example `screen:1@0,0,760,1080`).
+3. Hermes writes the rule and starts watching. Break a test.
+4. A few seconds later (Sentinel confirms across several looks before it speaks), an alert arrives in the chat with a screenshot of the failing page. Ask `what happened on my build page?` to read it back from event memory.
+
 ## Verified live, and what is not
 
 Run on 2026-11-07 against Hermes v0.23.0 in an isolated home, with a real vision model, in the classic CLI and a `file:` video source: from one plain-English request the agent found the Sentinel tools, created a rule, and when the mug left the video it stored an event with a snapshot and injected an alert (one judge call, confidence 0.98). **Not yet verified:** the real Hermes Desktop app (the Desktop pane was only rendered in a stub host), Telegram delivery with a photo, and a real-webcam retest of the latest cost fixes. Details in [docs/LIVE_TEST.md](docs/LIVE_TEST.md).

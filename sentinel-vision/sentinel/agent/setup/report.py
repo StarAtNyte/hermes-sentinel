@@ -31,6 +31,12 @@ def _ready_line(summary: dict[str, Any]) -> str:
     return f"Ready: yes - {count} {'item' if count == 1 else 'items'} to review"
 
 
+NEXT_STEP = (
+    "Next: tell Hermes what to watch, for example "
+    '"watch screen:1 and tell me when the build page shows a red Build failed banner".'
+)
+
+
 def format_report(checks: list[Check]) -> str:
     """The multi-line report: one line per check, its fix when not ok, then the verdict."""
     marks = {OK: "[ok]  ", WARN: "[warn]", FAIL: "[FAIL]"}
@@ -40,5 +46,7 @@ def format_report(checks: list[Check]) -> str:
         if c.fix and c.status != OK:
             lines.append("       fix: " + c.fix.replace("\n", "\n            "))
     s = summarize(checks)
+    if s["ready"]:
+        lines.append(NEXT_STEP)
     lines.append(_ready_line(s))
     return "\n".join(lines)
