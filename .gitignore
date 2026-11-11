@@ -9,3 +9,9 @@ dist/
 *.egg-info
 tests/fixtures/generated/
 .coverage
+
+# Local-only submission material (PR draft, demo videos, review notes)
+submission/
+.claude/
+*.log
+.DS_Store
