@@ -59,8 +59,8 @@ jobs:
 
       - name: pytest (plugin tests)
         run: |
-          if find hermes-sentinel/tests -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
-            uv run --no-sync pytest hermes-sentinel/tests
+          if find sentinel-vision/tests -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
+            uv run --no-sync pytest sentinel-vision/tests
           else
             echo "no plugin tests yet"
           fi
@@ -69,7 +69,7 @@ jobs:
         run: uv run --no-sync pytest tests_tools
 
       - name: rule_lint (catalog admission rules)
-        run: uv run --no-sync python scripts/rule_lint.py hermes-sentinel
+        run: uv run --no-sync python scripts/rule_lint.py sentinel-vision
 
       - name: ruff (strict Code standard)
         run: uv run --no-sync ruff check --config ruff.strict.toml .

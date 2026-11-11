@@ -71,7 +71,7 @@ PY_BAD = [
     ("URL = 'https://example.com/releases/plugin.py'\n", 3),
     ("URL = 'https://cdn.example.com/desktop/plugin.js?v=2'\n", 3),
     ("cmd = 'git pull origin main'\n", 3),
-    ("import subprocess\nsubprocess.run('pip install -U hermes-sentinel', shell=True)\n", 3),
+    ("import subprocess\nsubprocess.run('pip install -U sentinel-vision', shell=True)\n", 3),
     (
         "import urllib.request\nfrom pathlib import Path\n"
         "data = urllib.request.urlopen(u).read()\n"
@@ -101,7 +101,7 @@ def test_python_bad_samples(tmp_path: Path, source: str, rule: int | None) -> No
 
 PY_GOOD = [
     "from agent.secret_scope import get_secret\nkey = get_secret('SENTINEL_KEY')\n",
-    "from plugins.plugin_storage import plugin_data_dir\nd = plugin_data_dir('hermes-sentinel')\n",
+    "from plugins.plugin_storage import plugin_data_dir\nd = plugin_data_dir('sentinel-vision')\n",
     "from agent.plugin_llm import PluginLlmImageInput\nimg = PluginLlmImageInput(data=b'', "
     "mime_type='image/png')\n",
     "from .sentinel import gate\ngate.THRESHOLD = 3\n",  # plugin-local relative import is fine
@@ -197,7 +197,7 @@ const R = await import('react');
 const label = 'evaluate the frame';
 function evaluate(x) { return x; }
 class Overlay {}
-export default definePlugin({ id: 'hermes-sentinel', panel: () => React.createElement('div') });
+export default definePlugin({ id: 'sentinel-vision', panel: () => React.createElement('div') });
 """
 
 
@@ -468,7 +468,7 @@ def test_aliases_are_tracked(tmp_path: Path, source: str, rule: int) -> None:
         "(here / 'cache.json').write_text('{}')\n",
         # network I/O writing to plugin data, not to __file__
         "import urllib.request\nfrom plugins.plugin_storage import plugin_data_dir\n"
-        "d = plugin_data_dir('hermes-sentinel')\n"
+        "d = plugin_data_dir('sentinel-vision')\n"
         "(d / 'snap.jpg').write_bytes(urllib.request.urlopen(u).read())\n",
         "from agent.secret_scope import get_secret\nget = get_secret\nk = get('X')\n",
     ],

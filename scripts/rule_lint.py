@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static checker for the Hermes plugin catalog admission rules.
 
-Scans a plugin directory (default: ../hermes-sentinel relative to this script) and
+Scans a plugin directory (default: ../sentinel-vision relative to this script) and
 reports violations of the catalog rules listed in the project CLAUDE.md:
 
   rule 3   self-updating code (downloading .py/.js/archives, writing over __file__)
@@ -40,7 +40,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_TARGET = REPO_ROOT / "hermes-sentinel"
+DEFAULT_TARGET = REPO_ROOT / "sentinel-vision"
 
 # Top-level packages and modules of hermes-agent (checked against v0.22.5).
 HERMES_PACKAGES = frozenset(

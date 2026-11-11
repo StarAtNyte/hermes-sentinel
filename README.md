@@ -2,14 +2,14 @@
 
 Entry for the Nous Research Hermes Agent Plugin Hackathon (deadline 2026-11-11, 5 PM EST).
 
-This repository holds **hermes-sentinel**, a Hermes Agent plugin that watches cameras or the screen for events you describe in plain English and alerts you, with a photo, when they happen. A local change gate keeps cost near zero on quiet scenes; only changed frames reach your vision model.
+This repository holds **sentinel-vision**, a Hermes Agent plugin that watches cameras or the screen for events you describe in plain English and alerts you, with a photo, when they happen. A local change gate keeps cost near zero on quiet scenes; only changed frames reach your vision model.
 
-Start with the plugin README: [hermes-sentinel/README.md](hermes-sentinel/README.md). It covers install, required setup, usage, configuration, privacy and the catalog disclosures.
+Start with the plugin README: [sentinel-vision/README.md](sentinel-vision/README.md). It covers install, required setup, usage, configuration, privacy and the catalog disclosures.
 
 ## Repository layout
 
 ```
-hermes-sentinel/            the plugin (plugin.yaml, __init__.py, sentinel/)
+sentinel-vision/            the plugin (plugin.yaml, __init__.py, sentinel/)
   sentinel/                 sources, gate, judge, rules, engine, alerts, store, budget, tools, commands
   tests/                    plugin tests and the Hermes-free test harness (tests/harness/)
   docs/                     RECIPES.md, ARCHITECTURE.md
@@ -33,8 +33,8 @@ bash scripts/check.sh                 # ruff, plugin pytest, tool pytest, rule_l
 bash scripts/check.sh --with-hermes   # adds hermes plugins validate and doctor, isolated home only
 ```
 
-The default run never touches a real Hermes install. Tests use a fake plugin context and never import Hermes. See [CONTRIBUTING.md](CONTRIBUTING.md) and [hermes-sentinel/docs/ARCHITECTURE.md](hermes-sentinel/docs/ARCHITECTURE.md).
+The default run never touches a real Hermes install. Tests use a fake plugin context and never import Hermes. See [CONTRIBUTING.md](CONTRIBUTING.md) and [sentinel-vision/docs/ARCHITECTURE.md](sentinel-vision/docs/ARCHITECTURE.md).
 
 ## License
 
-MIT. See [hermes-sentinel/LICENSE](hermes-sentinel/LICENSE).
+MIT. See [sentinel-vision/LICENSE](sentinel-vision/LICENSE).

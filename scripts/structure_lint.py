@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static structure checker for the plugin tree (the "Enforced by tooling" list in CLAUDE.md).
 
-Scans a directory (default: ../hermes-sentinel relative to this script), skipping ``tests/`` and
+Scans a directory (default: ../sentinel-vision relative to this script), skipping ``tests/`` and
 ``__pycache__``, and reports:
 
   module-length      module longer than --max-module-lines (default 400)
@@ -511,7 +511,7 @@ def format_report(findings: list[Finding], top: int = 15) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     """CLI definition."""
-    default_target = Path(__file__).resolve().parent.parent / "hermes-sentinel"
+    default_target = Path(__file__).resolve().parent.parent / "sentinel-vision"
     defaults = Limits()
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(

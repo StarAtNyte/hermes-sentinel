@@ -1,4 +1,4 @@
-# Dev tooling only for the hermes-sentinel workspace. Not a plugin dependency
+# Dev tooling only for the sentinel-vision workspace. Not a plugin dependency
 # declaration (Hermes reads pyproject.toml only when it sits next to plugin.yaml).
 [project]
 name = "hermes-sentinel-dev"
@@ -30,8 +30,8 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["hermes-sentinel/tests", "tests_tools"]
-pythonpath = [".", "hermes-sentinel/tests"]
+testpaths = ["sentinel-vision/tests", "tests_tools"]
+pythonpath = [".", "sentinel-vision/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --import-mode=importlib"

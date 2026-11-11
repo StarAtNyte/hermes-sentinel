@@ -1,9 +1,9 @@
 // Mounts the plugin's registered route/nav/status contributions in a stub host.
 import { createRoot } from 'react-dom/client'
 import { createElement as h } from 'react'
-import plugin from '../../hermes-sentinel/desktop/plugin.js'
+import plugin from '../../sentinel-vision/desktop/plugin.js'
 
-const API = '/api/plugins/hermes-sentinel'
+const API = '/api/plugins/sentinel-vision'
 const contributions = []
 const stops = []
 

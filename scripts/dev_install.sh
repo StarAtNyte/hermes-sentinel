@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Link hermes-sentinel into a Hermes home for live testing, or remove that link.
+# Link sentinel-vision into a Hermes home for live testing, or remove that link.
 #
 # Dry run by default: it prints the commands and changes nothing. Pass --apply to run them.
 #
@@ -16,8 +16,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_DIR="$ROOT/hermes-sentinel"
-PLUGIN_NAME="hermes-sentinel"
+PLUGIN_DIR="$ROOT/sentinel-vision"
+PLUGIN_NAME="sentinel-vision"
 HERMES_AGENT_DIR="${HERMES_AGENT_DIR:-$HOME/.hermes/hermes-agent}"
 HERMES_PYTHON="${HERMES_PYTHON:-python3}"
 TARGET_HOME="${HERMES_HOME:-$HOME/.hermes}"

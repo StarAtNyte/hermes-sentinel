@@ -1,4 +1,4 @@
-"""Runs the node-based checks for hermes-sentinel/desktop/plugin.js (skipped without node)."""
+"""Runs the node-based checks for sentinel-vision/desktop/plugin.js (skipped without node)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "tests_tools" / "plugin_js_check.mjs"
-PLUGIN_JS = ROOT / "hermes-sentinel" / "desktop" / "plugin.js"
+PLUGIN_JS = ROOT / "sentinel-vision" / "desktop" / "plugin.js"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")

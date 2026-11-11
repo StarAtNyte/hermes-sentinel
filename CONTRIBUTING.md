@@ -9,11 +9,11 @@ uv sync --group dev
 bash scripts/check.sh
 ```
 
-`check.sh` runs `ruff check`, `ruff format --check`, the plugin tests (`hermes-sentinel/tests`), the tool tests (`tests_tools`), `scripts/rule_lint.py`, a strict ruff pass (`ruff check --config ruff.strict.toml .`: docstrings, naming, complexity) and `scripts/structure_lint.py`. The last two fail on any finding, and CI runs the same steps. Format with `uv run --group dev ruff format .`. All code meets the Code standard in `CLAUDE.md`: modules at most 400 lines, classes 250, functions 40, nesting 3, at most 8 modules per package, docstrings and type hints on public names, `__init__.py` files that only re-export. Line length is 100; the base ruff rules are E, F, W, I, B, UP, SIM, and the strict pass adds N, D, C901, RET and RSE. `check.sh` must pass before a change is merged.
+`check.sh` runs `ruff check`, `ruff format --check`, the plugin tests (`sentinel-vision/tests`), the tool tests (`tests_tools`), `scripts/rule_lint.py`, a strict ruff pass (`ruff check --config ruff.strict.toml .`: docstrings, naming, complexity) and `scripts/structure_lint.py`. The last two fail on any finding, and CI runs the same steps. Format with `uv run --group dev ruff format .`. All code meets the Code standard in `CLAUDE.md`: modules at most 400 lines, classes 250, functions 40, nesting 3, at most 8 modules per package, docstrings and type hints on public names, `__init__.py` files that only re-export. Line length is 100; the base ruff rules are E, F, W, I, B, UP, SIM, and the strict pass adds N, D, C901, RET and RSE. `check.sh` must pass before a change is merged.
 
 ## No real Hermes in tests or checks
 
-- Tests use the harness in `hermes-sentinel/tests/harness/` (fake context, fake LLM, module shims). They never import Hermes.
+- Tests use the harness in `sentinel-vision/tests/harness/` (fake context, fake LLM, module shims). They never import Hermes.
 - Do not run the `hermes` CLI against `~/.hermes` while developing. `check.sh` skips the Hermes steps by default; `--with-hermes` runs `plugins validate` and `plugins doctor` only in an isolated `HERMES_HOME` under `~/.cache/hermes-sentinel-dev/`.
 - Treat `~/.hermes/hermes-agent` as read-only reference. Use public plugin APIs (`ctx.*`) only.
 

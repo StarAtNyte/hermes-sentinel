@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Local quality gate for hermes-sentinel. Runs, in order:
+# Local quality gate for sentinel-vision. Runs, in order:
 #   1. ruff check                    (whole workspace)
 #   2. ruff format --check           (whole workspace)
-#   3. pytest plugin tests           (hermes-sentinel/tests)
+#   3. pytest plugin tests           (sentinel-vision/tests)
 #   4. pytest tool tests             (tests_tools)
 #   5. rule_lint                     (catalog admission rules 3/7/8/9/11/17)
 #   6. ruff check (strict)           (ruff.strict.toml: docstrings, naming, complexity; Code standard)
@@ -31,7 +31,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_DIR="$ROOT/hermes-sentinel"
+PLUGIN_DIR="$ROOT/sentinel-vision"
 HERMES_AGENT_DIR="${HERMES_AGENT_DIR:-$HOME/.hermes/hermes-agent}"
 HERMES_PYTHON="${HERMES_PYTHON:-python3}"
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/hermes-sentinel-dev"

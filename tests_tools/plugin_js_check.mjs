@@ -1,4 +1,4 @@
-// Node-only test for hermes-sentinel/desktop/plugin.js with a stub SDK and a stub React.
+// Node-only test for sentinel-vision/desktop/plugin.js with a stub SDK and a stub React.
 // Run: node tests_tools/plugin_js_check.mjs   (exit 0 = pass). Driven by test_plugin_js.py.
 import { register } from 'node:module'
 import { pathToFileURL } from 'node:url'
@@ -33,7 +33,7 @@ export async function load(url, ctx, next) {
 register('data:text/javascript,' + encodeURIComponent(hooks))
 
 globalThis.document = { visibilityState: 'visible' }
-const file = path.resolve(import.meta.dirname, '../hermes-sentinel/desktop/plugin.js')
+const file = path.resolve(import.meta.dirname, '../sentinel-vision/desktop/plugin.js')
 const m = await import(pathToFileURL(file).href)
 
 // ---- render helper: expand function components, collect text -------------------------
@@ -137,7 +137,7 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
 {
   const ctx = makeCtx(base())
   m.default.register(ctx)
-  assert.equal(m.default.id, 'hermes-sentinel')
+  assert.equal(m.default.id, 'sentinel-vision')
   const areas = ctx.registered.map(c => c.area).sort()
   assert.deepEqual(areas, ['nav', 'routes', 'statusBar.right'])
 }
@@ -230,7 +230,7 @@ assert.equal(m.validateWatch(' hi ').text, 'hi')
   await settle()
   c.tick(true)
   await settle()
-  assert.match(c.getState().frames['camera:0'].src, /^\/api\/plugins\/hermes-sentinel\/frame\/camera%3A0\?t=\d+$/)
+  assert.match(c.getState().frames['camera:0'].src, /^\/api\/plugins\/sentinel-vision\/frame\/camera%3A0\?t=\d+$/)
 }
 {
   // 404 -> missing, never direct

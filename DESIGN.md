@@ -50,7 +50,7 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
                                                           runs action_prompt)
 ```
 
-### Modules (`hermes-sentinel/sentinel/`)
+### Modules (`sentinel-vision/sentinel/`)
 - `sources.py` — `FrameSource` protocol: `open()`, `read() -> (ts, ndarray BGR)`, `close()`;
   raises `SourceError`. Implementations: `CameraSource` (cv2 index), `StreamSource` (RTSP/HTTP
   MJPEG via cv2), `SnapshotUrlSource` (HTTP JPEG endpoint, urllib), `ScreenSource` (mss,
@@ -74,7 +74,7 @@ Source --frames--> ChangeGate --changed frame / periodic tick--> Judge (vision L
   `RuleStateMachine`: idle -> candidate -> firing -> cooldown, k-of-n positive verdicts
   (default 2 of 3) with confidence >= threshold; for condition/absence requires truth across
   `hold_seconds`. Pure, clock-injected, fully unit-tested.
-- `store.py` — SQLite via `plugin_db("hermes-sentinel")`: `rules`, `events`
+- `store.py` — SQLite via `plugin_db("sentinel-vision")`: `rules`, `events`
   (id, rule_id, ts ISO-8601 UTC, caption, confidence, snapshot_path, feedback), `examples`
   (rule_id, kind pos/neg, path), `usage` (hour bucket, vision_calls). FTS5 over captions for
   queries. Snapshots under `plugin_data_dir/snapshots/YYYY-MM-DD/`. Retention: `retention_days`

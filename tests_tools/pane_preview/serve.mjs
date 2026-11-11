@@ -1,5 +1,5 @@
 // Preview server: bundles the pane against the SDK stub, serves it, and proxies
-// /api/plugins/hermes-sentinel/* to a live backend with the session token added server-side.
+// /api/plugins/sentinel-vision/* to a live backend with the session token added server-side.
 // Usage: node serve.mjs --token-file <path> [--backend http://127.0.0.1:9219] [--port 8765]
 import { createServer, request } from 'node:http'
 import { readFileSync } from 'node:fs'
@@ -33,7 +33,7 @@ function proxy(req, res) {
 
 createServer((req, res) => {
   const route = req.url.split('?')[0]
-  if (route.startsWith('/api/plugins/hermes-sentinel/')) return proxy(req, res)
+  if (route.startsWith('/api/plugins/sentinel-vision/')) return proxy(req, res)
   if (route === '/bundle.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); return res.end(bundle) }
   const entry = files[route]
   if (!entry) { res.writeHead(404); return res.end('not found') }
