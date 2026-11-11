@@ -1,42 +1,70 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Acme Status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service status · Demo</title>
 <style>
-  body { margin: 0; font-family: system-ui, sans-serif; background: #f4f6f8; color: #1b2430; }
-  header { padding: 28px 48px; background: #fff; border-bottom: 1px solid #dde3ea; font-size: 28px; font-weight: 700; }
-  .banner { margin: 48px; padding: 56px; border-radius: 16px; font-size: 56px; font-weight: 800; text-align: center; color: #fff; background: #1f9d55; }
-  .banner.down { background: #d64545; }
-  ul { margin: 0 48px; padding: 0; list-style: none; font-size: 28px; }
-  li { display: flex; justify-content: space-between; padding: 18px 24px; background: #fff; border-bottom: 1px solid #e6ebf0; }
-  .ok { color: #1f9d55; font-weight: 700; } .bad { color: #d64545; font-weight: 700; }
-  button { display: block; margin: 40px auto; padding: 14px 28px; font-size: 20px; border-radius: 10px; border: 1px solid #c3ccd6; background: #fff; cursor: pointer; }
+:root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #18212e; background: #f6f7f9; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header { background: #fff; border-bottom: 1px solid #e5e9ef; }
+.nav { max-width: 980px; margin: auto; height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; }
+.brand { font-weight: 730; letter-spacing: -.025em; font-size: 19px; display: flex; gap: 11px; align-items: center; }
+.mark { width: 25px; height: 25px; background: #1f2d42; border-radius: 6px; display: grid; place-items: center; color: white; font-size: 15px; }
+.nav-right { color: #647084; font-size: 14px; }
+main { max-width: 980px; padding: 48px 28px 65px; margin: auto; }
+.topline { display: flex; align-items: end; justify-content: space-between; margin-bottom: 26px; gap: 20px; }
+h1 { font-size: 30px; letter-spacing: -.035em; margin: 0 0 7px; }
+.intro { color: #627086; font-size: 15px; margin: 0; }
+.demo { font-size: 12px; font-weight: 650; color: #68778b; background: #e9edf2; border-radius: 4px; padding: 6px 9px; white-space: nowrap; }
+.banner { border-radius: 10px; background: #e4f5ec; color: #145b3a; padding: 21px 23px; display: flex; align-items: center; gap: 13px; font-size: 18px; font-weight: 700; transition: background .3s; }
+.banner.down { color: #872d28; background: #fff0ee; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #218653; flex: none; }
+.down .dot { background: #ce4d45; }
+.section-title { margin: 36px 0 14px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; }
+.section-title span { color: #6c7889; font-size: 13px; font-weight: 400; }
+.services { background: white; border: 1px solid #e2e7ed; border-radius: 10px; overflow: hidden; }
+.row { min-height: 65px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #edf0f3; font-size: 15px; }
+.row:last-child { border-bottom: 0; }
+.service { font-weight: 600; }
+.state { display: flex; gap: 8px; align-items: center; color: #26734e; font-size: 13px; font-weight: 650; }
+.state .dot { width: 7px; height: 7px; }
+.state.bad { color: #a63b34; }
+.state.bad .dot { background: #ce4d45; }
+.history { margin-top: 34px; display: flex; justify-content: space-between; align-items: center; color: #738092; font-size: 13px; }
+button { border: 1px solid #c9d2dd; border-radius: 7px; padding: 10px 15px; background: white; color: #344459; font: inherit; font-weight: 600; cursor: pointer; }
+button:hover { background: #f0f3f6; } button:focus-visible { outline: 3px solid #6b9cff; outline-offset: 3px; }
+@media (max-width: 600px) { main { padding-top: 32px; } .nav { height: 64px; } .topline { align-items: start; } .nav-right { display: none; } h1 { font-size: 25px; } }
 </style>
 </head>
 <body>
-<header>Acme Status</header>
-<div id="banner" class="banner">All systems operational</div>
-<ul>
-  <li>API <span id="api" class="ok">Operational</span></li>
-  <li>Dashboard <span class="ok">Operational</span></li>
-  <li>Database <span id="db" class="ok">Operational</span></li>
-</ul>
-<button id="toggle">Simulate outage</button>
+<header><div class="nav"><div class="brand"><span class="mark">S</span> Service status</div><div class="nav-right">Infrastructure overview</div></div></header>
+<main>
+  <div class="topline"><div><h1>System status</h1><p class="intro">Current availability of application services.</p></div><span class="demo">DEMO ENVIRONMENT</span></div>
+  <div id="banner" class="banner" role="status" aria-live="polite"><span class="dot"></span><span id="banner-text">All systems operational</span></div>
+  <div class="section-title">Services <span>Current status</span></div>
+  <div class="services">
+    <div class="row"><span class="service">API</span><span id="api" class="state"><span class="dot"></span><span>Operational</span></span></div>
+    <div class="row"><span class="service">Web application</span><span class="state"><span class="dot"></span><span>Operational</span></span></div>
+    <div class="row"><span class="service">Database</span><span id="db" class="state"><span class="dot"></span><span>Operational</span></span></div>
+    <div class="row"><span class="service">Background jobs</span><span class="state"><span class="dot"></span><span>Operational</span></span></div>
+  </div>
+  <div class="history"><span>Sample service data for a Sentinel demonstration</span><button id="toggle" type="button">Simulate outage</button></div>
+</main>
 <script>
-  let down = false;
-  document.getElementById("toggle").addEventListener("click", () => {
-    down = !down;
-    const banner = document.getElementById("banner");
-    banner.textContent = down ? "Major outage" : "All systems operational";
-    banner.className = down ? "banner down" : "banner";
-    for (const id of ["api", "db"]) {
-      const el = document.getElementById(id);
-      el.textContent = down ? "Down" : "Operational";
-      el.className = down ? "bad" : "ok";
-    }
-    document.getElementById("toggle").textContent = down ? "Restore" : "Simulate outage";
-  });
+let down = false;
+document.getElementById('toggle').addEventListener('click', () => {
+  down = !down;
+  document.getElementById('banner').classList.toggle('down', down);
+  document.getElementById('banner-text').textContent = down ? 'Major outage · API and database' : 'All systems operational';
+  for (const id of ['api', 'db']) {
+    const el = document.getElementById(id);
+    el.classList.toggle('bad', down);
+    el.lastElementChild.textContent = down ? 'Major outage' : 'Operational';
+  }
+  document.getElementById('toggle').textContent = down ? 'Restore services' : 'Simulate outage';
+});
 </script>
 </body>
 </html>

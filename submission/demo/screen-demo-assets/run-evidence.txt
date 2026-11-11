@@ -1,0 +1,15 @@
+Hermes Sentinel screen-watch demo, 2026-11-11, isolated Hermes home
+Hermes v0.23.0; source screen:1; simulated status page on an isolated X display.
+
+Request sent to Hermes:
+Use sentinel_watch to watch screen:1 and alert me if the status page says Major outage. The screen is a demo environment. Create the rule now.
+
+Sentinel event #1:
+Caption: The page shows major outages for the API and Database.
+Reason: The service status rows for API and Database each display the exact label “Major outage.”
+Confidence: 0.96
+Event time: 2026-11-11 13:26:55 Nepal time
+Alert delivery: delivered (accepted by Hermes injection; CLI did not visibly render the alert)
+Sentinel status immediately afterwards: 1 event, 1 alert sent, 0 failed, 5 vision checks.
+
+The edited video contains a real screen recording and the actual saved event snapshot. Its result panel is an editorial reconstruction of the event record and status output; it is not a recording of an alert shown in chat. The outage is simulated.
