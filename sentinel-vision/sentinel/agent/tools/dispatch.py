@@ -38,7 +38,7 @@ def wrap_handler(
             return err(str(exc))
         except SourceSpecError as exc:
             return err(
-                f"invalid source: {exc}. Examples: camera:0, screen, rtsp://..., "
+                f"invalid source: {exc}. Examples: camera:0, screen, stream:<name>, "
                 "folder:/path. Use sentinel_sources to list what is available."
             )
         except SourceError as exc:

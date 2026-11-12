@@ -76,7 +76,11 @@ class EngineState:
         self.started_at: float | None = None  # wall clock of the last successful start
 
     def _open_default(self, spec: str) -> Any:
-        return open_source(spec, named_streams=self.config.stream_urls)
+        return open_source(
+            spec,
+            named_streams=self.config.stream_urls,
+            trusted_sources=(self.config.default_source,),
+        )
 
     def _default_key(self, spec: str) -> str:
         return default_source_key(spec, self.config.stream_urls)

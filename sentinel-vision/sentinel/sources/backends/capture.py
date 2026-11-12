@@ -150,7 +150,12 @@ class StreamSource(CaptureSource):
         super().__init__(spec, clock=clock)
 
     def _create_capture(self, cv2: ModuleType) -> Any:
-        url = expand_url(str(self.spec.target), origin=self.name, schemes=STREAM_SCHEMES)
+        url = expand_url(
+            str(self.spec.target),
+            origin=self.name,
+            schemes=STREAM_SCHEMES,
+            configured=self.spec.configured,
+        )
         ms = int(self.spec.timeout * 1000)
         params: list[int] = []
         for prop in ("CAP_PROP_OPEN_TIMEOUT_MSEC", "CAP_PROP_READ_TIMEOUT_MSEC"):

@@ -69,12 +69,41 @@ def redact_url(url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
 
-def expand_url(template: str, *, origin: str, schemes: frozenset[str] | None = None) -> str:
+NETWORK_KINDS = frozenset({"snapshot", "stream"})
+CONFIG_ONLY_HINT = (
+    "network sources (rtsp://, http(s) streams and snapshots) cannot be given directly: add the "
+    "URL under plugins.entries.sentinel-vision.settings.stream_urls in config.yaml and use "
+    "stream:<name>"
+)
+
+
+def require_configured(kind: str, configured: bool) -> None:
+    """Refuse a network source that did not come from the user's own configuration.
+
+    A model-supplied URL could point at a loopback or cloud-metadata address or carry a
+    ``${NAME}`` placeholder that would send a Hermes secret to a host the model chose.
+    """
+    if kind in NETWORK_KINDS and not configured:
+        raise SourceSpecError(CONFIG_ONLY_HINT)
+
+
+def expand_url(
+    template: str,
+    *,
+    origin: str,
+    schemes: frozenset[str] | None = None,
+    configured: bool = True,
+) -> str:
     """Substitute ``${NAME}`` placeholders with URL-quoted secret values.
 
     A template that is exactly one placeholder (``${SENTINEL_STREAM_URL_1}``) holds a whole URL
     in the secret, so the value is used as is and, when ``schemes`` is given, checked against it.
+    Placeholders are only expanded for a ``configured`` source (the user's own config).
     """
+    if not configured and PLACEHOLDER_RE.search(template):
+        raise SourceSpecError(
+            "secret placeholders (${NAME}) are only allowed in configured sources (stream_urls)"
+        )
     if is_placeholder(template.strip()):
         url = require_secret(PLACEHOLDER_RE.fullmatch(template.strip()).group(1), origin=origin)
         if schemes is not None:

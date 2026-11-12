@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import dataclasses
 import http.server
 import io
 import threading
@@ -50,8 +51,13 @@ class FakeOpener:
         return item
 
 
+def _configured(spec: Any, **kw: Any):
+    """Open ``spec`` as if it came from the user's stream_urls config."""
+    return src.open_source(dataclasses.replace(SourceSpec.parse(spec), configured=True), **kw)
+
+
 def _snapshot(opener: FakeOpener, spec: Any = "https://cam.local/snap.jpg", **kw: Any):
-    parsed = SourceSpec.parse(spec)
+    parsed = dataclasses.replace(SourceSpec.parse(spec), configured=True)  # as from stream_urls
     return src.SnapshotUrlSource(parsed, opener=opener, **kw)
 
 
@@ -180,7 +186,7 @@ def http_server():
 def test_snapshot_real_http(http_server, shim_binding) -> None:
     shim_binding.secrets["TOK"] = "abc"
     port = http_server.server_address[1]
-    snap = src.open_source(
+    snap = _configured(
         {"kind": "snapshot", "url": f"http://127.0.0.1:{port}/img", "token_secret": "TOK"}
     )
     with snap:
@@ -192,7 +198,7 @@ def test_snapshot_real_http(http_server, shim_binding) -> None:
 def test_snapshot_redirect_keeps_auth_same_host(http_server, shim_binding) -> None:
     shim_binding.secrets["TOK"] = "abc"
     port = http_server.server_address[1]
-    snap = src.open_source(
+    snap = _configured(
         {"kind": "snapshot", "url": f"http://127.0.0.1:{port}/redirect-same", "token_secret": "TOK"}
     )
     with snap:
@@ -203,7 +209,7 @@ def test_snapshot_redirect_keeps_auth_same_host(http_server, shim_binding) -> No
 def test_snapshot_redirect_drops_auth_cross_host(http_server, shim_binding) -> None:
     shim_binding.secrets["TOK"] = "abc"
     port = http_server.server_address[1]
-    snap = src.open_source(
+    snap = _configured(
         {
             "kind": "snapshot",
             "url": f"http://127.0.0.1:{port}/redirect-other",
@@ -218,9 +224,7 @@ def test_snapshot_redirect_drops_auth_cross_host(http_server, shim_binding) -> N
 
 def test_snapshot_real_timeout(http_server) -> None:
     port = http_server.server_address[1]
-    snap = src.open_source(
-        {"kind": "snapshot", "url": f"http://127.0.0.1:{port}/slow", "timeout": 0.2}
-    )
+    snap = _configured({"kind": "snapshot", "url": f"http://127.0.0.1:{port}/slow", "timeout": 0.2})
     snap.open()
     start = time.monotonic()
     with pytest.raises(SourceDisconnected):
@@ -229,7 +233,7 @@ def test_snapshot_real_timeout(http_server) -> None:
 
 
 def test_snapshot_unreachable_real() -> None:
-    snap = src.open_source({"kind": "snapshot", "url": "http://127.0.0.1:9/x.jpg", "timeout": 1})
+    snap = _configured({"kind": "snapshot", "url": "http://127.0.0.1:9/x.jpg", "timeout": 1})
     snap.open()
     with pytest.raises(SourceDisconnected):
         snap.read()

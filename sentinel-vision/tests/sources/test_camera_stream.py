@@ -141,7 +141,11 @@ def test_close_waits_for_inflight_read(fake_cv2: dict[str, Any]) -> None:
 
 def test_stream_resolves_secret_placeholders(fake_cv2: dict[str, Any], shim_binding) -> None:
     shim_binding.secrets["CAM_PW"] = "p@ss/word"
-    stream = src.open_source("rtsp://admin:${CAM_PW}@cam.local/live", clock=lambda: 5.0)
+    stream = src.open_source(
+        "rtsp://admin:${CAM_PW}@cam.local/live",
+        trusted_sources=("rtsp://admin:${CAM_PW}@cam.local/live",),
+        clock=lambda: 5.0,
+    )
     assert isinstance(stream, src.StreamSource)
     stream.open()
     cap = FakeCapture.instances[0]
@@ -156,7 +160,9 @@ def test_stream_resolves_secret_placeholders(fake_cv2: dict[str, Any], shim_bind
 
 
 def test_stream_missing_secret(fake_cv2: dict[str, Any], shim_binding) -> None:
-    stream = src.open_source("rtsp://admin:${NOPE}@cam/live")
+    stream = src.open_source(
+        "rtsp://admin:${NOPE}@cam/live", trusted_sources=("rtsp://admin:${NOPE}@cam/live",)
+    )
     with pytest.raises(SourceError, match="NOPE"):
         stream.open()
     assert not stream.is_open
@@ -172,7 +178,7 @@ def test_stream_falls_back_without_params_overload(monkeypatch: pytest.MonkeyPat
         return FakeCapture(args[0])
 
     monkeypatch.setattr(deps, "require_cv2", lambda p: make_fake_cv2(factory))
-    with src.open_source("stream:http://cam/v.mjpg"):
+    with src.open_source("stream:http://cam/v.mjpg", trusted_sources=("stream:http://cam/v.mjpg",)):
         pass
     assert [len(c) for c in calls] == [3, 2]
 
@@ -187,4 +193,6 @@ def test_secret_scope_failure_is_source_error(
 
     monkeypatch.setattr(scope, "get_secret", raising)
     with pytest.raises(SourceError, match="RuntimeError"):
-        src.open_source("rtsp://u:${X}@cam/live").open()
+        src.open_source(
+            "rtsp://u:${X}@cam/live", trusted_sources=("rtsp://u:${X}@cam/live",)
+        ).open()

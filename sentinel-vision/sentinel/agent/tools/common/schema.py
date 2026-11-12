@@ -32,9 +32,10 @@ ROI_PROPERTY = {
 SOURCE_PROPERTY = {
     "type": "string",
     "description": "Where to look: 'camera:0' (webcam index), 'screen' or 'screen:1' "
-    "(monitor), 'screen:1@x,y,w,h' (screen region), 'rtsp://...' or 'stream:<name>' (a "
-    "configured stream), 'snapshot:https://...' (JPEG URL), or 'folder:/path' (newest image). "
-    "Defaults to the configured default_source. Use sentinel_sources to list options.",
+    "(monitor), 'screen:1@x,y,w,h' (screen region), 'stream:<name>' (a network camera "
+    "the user configured; raw URLs are refused), 'file:/path/clip.mp4' or 'folder:/path' "
+    "(newest image). Defaults to the configured default_source. Use sentinel_sources to list "
+    "options.",
 }
 SCHEDULE_PROPERTY = {
     "type": "object",

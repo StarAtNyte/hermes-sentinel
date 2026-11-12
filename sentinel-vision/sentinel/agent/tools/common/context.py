@@ -9,7 +9,7 @@ from typing import Any
 from ....alerts import capture_origin, is_chat_origin, visible_to
 from ....rules import RuleSpec
 from ....runtime import Sentinel
-from ....sources import SourceSpec
+from ....sources import SourceSpec, require_configured
 from ....storage import EventRecord
 from .args import str_arg
 from .results import ToolError
@@ -36,7 +36,10 @@ class ToolContext:
         """The validated ``source`` argument, defaulting to the configured default source."""
         config = self.sentinel.config
         source = str_arg(args, "source", limit=2048) or config.default_source
-        SourceSpec.parse(source, named_streams=config.stream_urls)  # validate early
+        spec = SourceSpec.parse(
+            source, named_streams=config.stream_urls, trusted_sources=(config.default_source,)
+        )
+        require_configured(spec.kind, spec.configured)  # validate early
         return source
 
     def caller(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:

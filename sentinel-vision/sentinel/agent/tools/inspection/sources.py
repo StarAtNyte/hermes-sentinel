@@ -26,8 +26,8 @@ def run(context: ToolContext, args: dict[str, Any], _kwargs: Mapping[str, Any]) 
     return ok(
         sources=[i.to_dict() for i in infos],
         default_source=config.default_source,
-        hint="Also possible: 'snapshot:https://host/cam.jpg', 'folder:/path/to/images', "
-        "'screen:1@x,y,w,h' for part of a screen.",
+        hint="Also possible: 'folder:/path/to/images' and 'screen:1@x,y,w,h' for part of a "
+        "screen. Network cameras must be listed in stream_urls and used as 'stream:<name>'.",
     )
 
 

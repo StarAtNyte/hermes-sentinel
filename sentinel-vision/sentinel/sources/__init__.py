@@ -87,6 +87,7 @@ from .spec import (
     probe_secrets,
     redact_url,
     referenced_secrets,
+    require_configured,
 )
 from .timeouts import DEFAULT_TIMEOUT_S, MAX_TIMEOUT_S
 
@@ -128,4 +129,5 @@ __all__ = [
     "probe_secrets",
     "redact_url",
     "referenced_secrets",
+    "require_configured",
 ]

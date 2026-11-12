@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import fields, replace
 from typing import Any
 
@@ -97,7 +97,7 @@ def named_stream(name: str, url: str) -> SourceSpec:
         target = target.split(":", 1)[1].strip()
     elif lowered.split(":", 1)[0] in HTTP_SCHEMES and not looks_like_stream(target):
         kind = "snapshot"
-    return SourceSpec(kind=kind, target=target, name=name)
+    return SourceSpec(kind=kind, target=target, name=name, configured=True)
 
 
 def _parse_screen(rest: str) -> SourceSpec:
@@ -201,7 +201,10 @@ def parse_mapping(
     data: Mapping[str, Any], *, named_streams: Mapping[str, str] | None
 ) -> SourceSpec:
     """Parse a mapping with ``spec`` or ``kind``/``target`` plus optional overrides."""
-    allowed = {f.name for f in fields(SourceSpec)} | {"spec", *_TARGET_ALIASES}
+    allowed = {f.name for f in fields(SourceSpec) if f.name != "configured"} | {
+        "spec",
+        *_TARGET_ALIASES,
+    }
     unknown = set(data) - allowed
     if unknown:
         raise SourceSpecError(f"unknown source fields: {', '.join(sorted(unknown))}")
@@ -216,8 +219,13 @@ def parse_spec(
     value: SourceSpec | str | int | Mapping[str, Any],
     *,
     named_streams: Mapping[str, str] | None = None,
+    trusted_sources: Collection[str] = (),
 ) -> SourceSpec:
-    """Build a spec from a spec string, camera index, mapping, or existing spec."""
+    """Build a spec from a spec string, camera index, mapping, or existing spec.
+
+    A string equal to one of ``trusted_sources`` (the user's configured default source) is
+    marked ``configured``; a mapping can never set that flag itself.
+    """
     if isinstance(value, SourceSpec):
         return value
     if isinstance(value, bool):
@@ -228,4 +236,7 @@ def parse_spec(
         return parse_mapping(value, named_streams=named_streams)
     if not isinstance(value, str):
         raise SourceSpecError("source spec must be a string, index or mapping")
-    return parse_string(value, named_streams=named_streams)
+    spec = parse_string(value, named_streams=named_streams)
+    if value.strip() in trusted_sources:
+        return replace(spec, configured=True)
+    return spec

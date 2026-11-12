@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +29,9 @@ class SourceSpec:
         token_secret: secret name for an HTTP bearer token (snapshot).
         loop: file sources only; restart the video at the end instead of finishing.
         speed: file sources only; frame step (1 = every frame, 3 = every third frame).
+        configured: the URL comes from the user's own plugin config (``stream_urls`` or
+            ``default_source``), not from a model-supplied source string. Only configured
+            sources may use network URLs and ``${NAME}`` secret placeholders.
     """
 
     kind: SourceKind
@@ -43,6 +46,7 @@ class SourceSpec:
     token_secret: str | None = None
     loop: bool = False
     speed: int = 1
+    configured: bool = False
 
     def __post_init__(self) -> None:
         """Validate and normalise every field."""
@@ -102,13 +106,15 @@ class SourceSpec:
         value: SourceSpec | str | int | Mapping[str, Any],
         *,
         named_streams: Mapping[str, str] | None = None,
+        trusted_sources: Collection[str] = (),
     ) -> SourceSpec:
         """Build a spec from a spec string, camera index, mapping, or existing spec.
 
         ``named_streams`` is the ``stream_urls`` config (name -> URL template); a bare name
-        or ``stream:<name>`` resolves through it.
+        or ``stream:<name>`` resolves through it. ``trusted_sources`` lists source strings the
+        user configured themselves (the default source); a spec equal to one is ``configured``.
         """
         # Imported here because the parser builds SourceSpec instances.
         from .parser import parse_spec
 
-        return parse_spec(value, named_streams=named_streams)
+        return parse_spec(value, named_streams=named_streams, trusted_sources=trusted_sources)
